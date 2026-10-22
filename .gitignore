@@ -1,0 +1,16 @@
+# Gradle / build output
+.gradle/
+.kotlin/
+build/
+
+# Local configuration
+local.properties
+.claude/settings.local.json
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
