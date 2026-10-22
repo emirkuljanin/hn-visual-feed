@@ -33,6 +33,11 @@ Treat new Kotlin warnings (`^w:`) as things to fix; CI builds with `-PwarningsAs
 - AVD: `Pixel_7_Pro_34`. Start it in the background:
   `"$LOCALAPPDATA/Android/Sdk/emulator/emulator.exe" -avd Pixel_7_Pro_34 -no-snapshot-save -no-boot-anim`
 - Ready when `"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" shell getprop sys.boot_completed` prints `1`.
+  Wait for it without a host-side sleep loop: `adb wait-for-device && adb shell 'while [ "$(getprop
+  sys.boot_completed)" != "1" ]; do sleep 2; done'`.
+- If tests fail with "No compatible devices connected" or adb reports the emulator `offline` (seen after the
+  emulator logged a GPU fault), kill it and cold-boot with software rendering:
+  `-no-snapshot -gpu swiftshader_indirect`.
 - Screenshot for a PR: install `app/build/outputs/apk/debug/app-debug.apk`, `am start -W -n
   com.emirkuljanin.hnfeed/.MainActivity`, wait ~2 s (the launch fade makes earlier captures look washed out),
   then `adb exec-out screencap -p > file.png`.

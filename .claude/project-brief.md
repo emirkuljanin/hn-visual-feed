@@ -34,8 +34,9 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 - **Generation scheduling**: rows inserted as `PENDING`; one unique WorkManager job drains PENDING in rank order
   with bounded concurrency, retry with backoff; cards observe status via Room and swap placeholder → image.
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
-  Room, Paging 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest stable versions.
-- **Modules**: `:app`, `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
+  Room 3 (platform SQLite driver), Paging 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
+  stable versions.
+- **Modules**: `:app`, `:core:common` (dispatchers), `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
   `:core:designsystem`, `:core:testing`, `:feature:feed`, `:feature:story`, `build-logic` convention plugins.
   A module is added by the PR that first needs it.
 - **Process**: one PR (Gitblit ticket) per task. Before a ticket is opened, the `pr-reviewer` agent reviews the
@@ -44,8 +45,8 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 
 ## PR plan
 
-1. Project skeleton (build-logic, catalog, Hilt, theme, placeholder feed). *Done, in review.*
-2. Network + database + models (MockWebServer, in-memory Room tests).
+1. Project skeleton (build-logic, catalog, Hilt, theme, placeholder feed). *Merged.*
+2. Network + database + models (MockWebServer, in-memory Room tests). *In review.*
 3. Paging: RemoteMediator, repository, snapshot logic (tests).
 4. Feed UI: cards with placeholders, pull-to-refresh, ViewModel tests, Roborazzi screenshots.
 5. Image generation: interface, cloud + on-device generators, safety filter, WorkManager, file storage, cleanup.
