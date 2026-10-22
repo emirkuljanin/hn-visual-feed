@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_feed_title">Hacker News</string>
+    <string name="feature_feed_placeholder">The feed is on its way.</string>
+</resources>
