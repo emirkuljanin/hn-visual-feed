@@ -5,9 +5,9 @@ Decisions marked **Agreed** were settled with the user; challenge one only with 
 
 ## The assignment
 
-Take-home for a **Senior Android Developer** role at Yttr AS. Target effort 4–6 h; the code is mainly a
-starting point for a technical interview about code, architecture and technical choices (Thu 2026-10-29).
-Code must be shared by Wed 2026-10-28.
+Take-home assignment for a **Senior Android Developer** role at Yttr AS (target effort 4–6 h). The code is
+meant as a basis for a technical discussion of code, architecture and technical choices, so clear, documented
+trade-offs matter more than polish. Code must be shared by Wed 2026-10-28.
 
 Requirements:
 1. Fetch Top story IDs and details from the official Hacker News Firebase REST API; infinite scrolling.
@@ -17,7 +17,7 @@ Requirements:
 4. Jetpack Compose + Material 3; paged cards with image, title, author, score, submission time.
 5. Modern Android architecture (UI layer, ViewModel, Repository); Hilt; coroutines with correct dispatchers.
 6. Testing (spec just says "Testing"): unit tests, plus Roborazzi screenshot tests and Compose UI tests.
-Interview may also cover fetching/structuring/storing HN **comments**; we will implement them.
+Optional extension named by Yttr: fetching, structuring and storing HN **comments**. We implement it (PR 6).
 
 ## Agreed decisions
 

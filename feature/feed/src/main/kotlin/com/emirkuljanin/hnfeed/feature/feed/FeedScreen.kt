@@ -16,6 +16,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.emirkuljanin.hnfeed.core.designsystem.theme.HnFeedTheme
 
 // Placeholder until the paged feed lands; it exercises the feature-module wiring end to end.
+// TopAppBar is still @ExperimentalMaterial3Api in the Material 3 version shipped with the current Compose BOM.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(modifier: Modifier = Modifier) {
