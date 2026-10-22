@@ -33,6 +33,8 @@ Module dependency direction (arrows = "may depend on"); a module is added by the
              └────────> :core:designsystem
 ```
 
+Any Android module may depend on `:core:common` (injectable dispatchers and other small utilities).
+
 - `:core:model` is pure Kotlin (no Android). Network DTOs and Room entities stay inside their modules and are
   mapped to model types at the boundary; they never leak into features.
 - Features talk only to repositories in `:core:data`, never to Retrofit or Room directly.
@@ -55,7 +57,8 @@ Module dependency direction (arrows = "may depend on"); a module is added by the
   `collectAsStateWithLifecycle()`; it passes plain state and lambdas to a stateless `XxxScreen`. Every screen
   has `@Preview`s using `HnFeedTheme(dynamicColor = false)`. Strings go in resources.
 - ViewModels expose `StateFlow<UiState>` (plus `Flow<PagingData<…>>` for lists); no one-shot event channels.
-- Tests: JUnit4 + `kotlinx-coroutines-test` + Turbine; prefer hand-written fakes over mocks. New behaviour
+- Tests: JUnit4 + `kotlinx-coroutines-test` + Turbine; prefer hand-written fakes over mocks. Network code is tested
+  against MockWebServer, DAOs against an in-memory Room database under Robolectric. New behaviour
   ships with tests in the same PR. Screenshot tests use Roborazzi; re-record baselines only for intended changes.
 - Formatting is enforced by Spotless (ktlint `android_studio` style + Compose rules); don't hand-format.
 

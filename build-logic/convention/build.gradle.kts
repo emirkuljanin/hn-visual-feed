@@ -20,6 +20,7 @@ kotlin {
 dependencies {
     compileOnly(libs.android.gradlePlugin)
     compileOnly(libs.kotlin.gradlePlugin)
+    compileOnly(libs.room.gradlePlugin)
 }
 
 gradlePlugin {
@@ -47,6 +48,10 @@ gradlePlugin {
         register("androidHilt") {
             id = "hnfeed.android.hilt"
             implementationClass = "AndroidHiltConventionPlugin"
+        }
+        register("androidRoom") {
+            id = "hnfeed.android.room"
+            implementationClass = "AndroidRoomConventionPlugin"
         }
         register("jvmLibrary") {
             id = "hnfeed.jvm.library"

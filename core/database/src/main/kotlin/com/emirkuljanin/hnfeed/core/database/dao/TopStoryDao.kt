@@ -1,0 +1,34 @@
+package com.emirkuljanin.hnfeed.core.database.dao
+
+import androidx.room3.Dao
+import androidx.room3.Insert
+import androidx.room3.Query
+import androidx.room3.Transaction
+import com.emirkuljanin.hnfeed.core.database.model.TopStoryEntity
+
+@Dao
+abstract class TopStoryDao {
+
+    /**
+     * Replaces the snapshot with [storyIds] in the given order, all marked as not loaded. Should an id appear twice,
+     * it keeps its first (best) rank.
+     */
+    @Transaction
+    open suspend fun replaceSnapshot(storyIds: List<Long>) {
+        clear()
+        insert(storyIds.distinct().mapIndexed { rank, id -> TopStoryEntity(rank = rank, storyId = id) })
+    }
+
+    /** The best-ranked ids whose details have not been fetched yet; empty once the whole snapshot is loaded. */
+    @Query("SELECT story_id FROM top_stories WHERE is_loaded = 0 ORDER BY rank LIMIT :limit")
+    abstract suspend fun nextUnloadedStoryIds(limit: Int): List<Long>
+
+    @Query("UPDATE top_stories SET is_loaded = 1 WHERE story_id IN (:storyIds)")
+    abstract suspend fun markLoaded(storyIds: List<Long>)
+
+    @Query("DELETE FROM top_stories")
+    protected abstract suspend fun clear()
+
+    @Insert
+    protected abstract suspend fun insert(entries: List<TopStoryEntity>)
+}
