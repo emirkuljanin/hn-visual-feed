@@ -43,6 +43,9 @@ Any Android module may depend on `:core:common` (injectable dispatchers and othe
 - **Threading**: classes that do blocking work are main-safe and switch dispatchers themselves, using an injected
   `CoroutineDispatcher` (never a hard-coded `Dispatchers.IO`), so tests can substitute a test dispatcher.
   No `GlobalScope`, no `runBlocking` outside tests. Long-lived background work goes through WorkManager.
+- **Time**: inject `java.time.Clock` (provided by `:core:common`); never call `Instant.now()` directly.
+- **Errors**: `:core:network` throws only `IOException`s (`HnApiException` for unusable responses); Retrofit and
+  kotlinx.serialization types never leave it. Paging code turns failures into `LoadState.Error` instead of throwing.
 - **DI**: Hilt everywhere; bindings live in a `di` package of the module that owns the implementation, and
   modules expose interfaces where a fake is useful in tests.
 
@@ -58,7 +61,8 @@ Any Android module may depend on `:core:common` (injectable dispatchers and othe
   has `@Preview`s using `HnFeedTheme(dynamicColor = false)`. Strings go in resources.
 - ViewModels expose `StateFlow<UiState>` (plus `Flow<PagingData<…>>` for lists); no one-shot event channels.
 - Tests: JUnit4 + `kotlinx-coroutines-test` + Turbine; prefer hand-written fakes over mocks. Network code is tested
-  against MockWebServer, DAOs against an in-memory Room database under Robolectric. New behaviour
+  against MockWebServer, DAOs and the data layer against an in-memory Room database under Robolectric, Paging
+  end to end with `paging-testing`'s `asSnapshot`. New behaviour
   ships with tests in the same PR. Screenshot tests use Roborazzi; re-record baselines only for intended changes.
 - Formatting is enforced by Spotless (ktlint `android_studio` style + Compose rules); don't hand-format.
 

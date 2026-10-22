@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feature_feed_title">Hacker News</string>
-    <string name="feature_feed_placeholder">The feed is on its way.</string>
+    <!-- e.g. "120 points by pg · 45 comments" -->
+    <string name="feature_feed_story_meta">%1$s by %2$s · %3$s</string>
+    <plurals name="feature_feed_points">
+        <item quantity="one">%d point</item>
+        <item quantity="other">%d points</item>
+    </plurals>
+    <plurals name="feature_feed_comments">
+        <item quantity="one">%d comment</item>
+        <item quantity="other">%d comments</item>
+    </plurals>
 </resources>

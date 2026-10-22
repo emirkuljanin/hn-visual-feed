@@ -14,7 +14,8 @@ interface DatabaseTransactionRunner {
     suspend operator fun <T> invoke(block: suspend () -> T): T
 }
 
-internal class RoomDatabaseTransactionRunner @Inject constructor(private val database: HnDatabase) :
+/** Public so other modules' tests can use the real transaction semantics with an in-memory [HnDatabase]. */
+class RoomDatabaseTransactionRunner @Inject constructor(private val database: HnDatabase) :
     DatabaseTransactionRunner {
 
     override suspend fun <T> invoke(block: suspend () -> T): T = database.withWriteTransaction { block() }

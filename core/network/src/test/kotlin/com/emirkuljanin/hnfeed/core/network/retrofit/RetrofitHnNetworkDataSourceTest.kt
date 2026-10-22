@@ -1,5 +1,6 @@
 package com.emirkuljanin.hnfeed.core.network.retrofit
 
+import com.emirkuljanin.hnfeed.core.network.HnApiException
 import com.emirkuljanin.hnfeed.core.network.model.NetworkItem
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -13,7 +14,6 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
-import retrofit2.HttpException
 
 class RetrofitHnNetworkDataSourceTest {
 
@@ -93,7 +93,16 @@ class RetrofitHnNetworkDataSourceTest {
     fun items_failsAsAWhole_whenOneRequestFails() = runTest {
         server.respondWith(mapOf(1L to """{"id":1}"""), failingIds = setOf(2L))
 
-        assertFailsWith<HttpException> { dataSource.items(listOf(1, 2)) }
+        val error = assertFailsWith<HnApiException> { dataSource.items(listOf(1, 2)) }
+        assertEquals("HTTP 500 for item 2", error.message)
+    }
+
+    @Test
+    fun items_reportMalformedResponsesAsApiExceptions() = runTest {
+        server.respondWith(mapOf(1L to """{"type":"story"}""")) // "id" is required
+
+        val error = assertFailsWith<HnApiException> { dataSource.items(listOf(1)) }
+        assertEquals("Malformed response for item 1", error.message)
     }
 
     /** Requests for several items run concurrently, so responses are routed by path rather than queued in order. */
