@@ -19,6 +19,7 @@ kotlin {
 
 dependencies {
     compileOnly(libs.android.gradlePlugin)
+    compileOnly(libs.compose.gradlePlugin)
     compileOnly(libs.kotlin.gradlePlugin)
     compileOnly(libs.room.gradlePlugin)
 }
@@ -52,6 +53,10 @@ gradlePlugin {
         register("androidRoom") {
             id = "hnfeed.android.room"
             implementationClass = "AndroidRoomConventionPlugin"
+        }
+        register("androidRoborazzi") {
+            id = "hnfeed.android.roborazzi"
+            implementationClass = "AndroidRoborazziConventionPlugin"
         }
         register("jvmLibrary") {
             id = "hnfeed.jvm.library"

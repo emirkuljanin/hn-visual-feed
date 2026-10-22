@@ -16,7 +16,8 @@ Use a JDK 17+ to launch Gradle (on the author's Windows machine:
 | --- | --- |
 | Format / check format | `./gradlew spotlessApply` / `./gradlew spotlessCheck` |
 | Build | `./gradlew assembleDebug` (and `assembleRelease` when touching R8/serialization/DI) |
-| Unit + screenshot tests | `./gradlew testDebugUnitTest` |
+| Unit tests | `./gradlew testDebugUnitTest` (also runs screenshot tests, but does not compare images) |
+| Screenshot tests | `./gradlew verifyRoborazziDebug` compares with `*/src/test/screenshots`; `recordRoborazziDebug` re-records |
 | Lint | `./gradlew lintDebug` (must report no issues) |
 | UI tests (emulator) | `./gradlew connectedDebugAndroidTest` |
 
@@ -34,6 +35,8 @@ Module dependency direction (arrows = "may depend on"); a module is added by the
 ```
 
 Any Android module may depend on `:core:common` (injectable dispatchers and other small utilities).
+`:core:testing` (shared fakes, test data, `MainDispatcherRule`) is only ever a test dependency; feature modules get
+it automatically through `hnfeed.android.feature`.
 
 - `:core:model` is pure Kotlin (no Android). Network DTOs and Room entities stay inside their modules and are
   mapped to model types at the boundary; they never leak into features.
@@ -43,7 +46,8 @@ Any Android module may depend on `:core:common` (injectable dispatchers and othe
 - **Threading**: classes that do blocking work are main-safe and switch dispatchers themselves, using an injected
   `CoroutineDispatcher` (never a hard-coded `Dispatchers.IO`), so tests can substitute a test dispatcher.
   No `GlobalScope`, no `runBlocking` outside tests. Long-lived background work goes through WorkManager.
-- **Time**: inject `java.time.Clock` (provided by `:core:common`); never call `Instant.now()` directly.
+- **Time**: inject `java.time.Clock` (provided by `:core:common`); never call `Instant.now()` directly. Compose code
+  reads it from `LocalClock`, which `MainActivity` sets to the injected clock and tests set to a fixed one.
 - **Errors**: `:core:network` throws only `IOException`s (`HnApiException` for unusable responses); Retrofit and
   kotlinx.serialization types never leave it. Paging code turns failures into `LoadState.Error` instead of throwing.
 - **DI**: Hilt everywhere; bindings live in a `di` package of the module that owns the implementation, and
@@ -58,12 +62,18 @@ Any Android module may depend on `:core:common` (injectable dispatchers and othe
   KSP only, never kapt. AGP 9 built-in Kotlin: do not apply `org.jetbrains.kotlin.android`.
 - Compose: a `XxxRoute` composable gets the ViewModel (`hiltViewModel()`) and collects state with
   `collectAsStateWithLifecycle()`; it passes plain state and lambdas to a stateless `XxxScreen`. Every screen
-  has `@Preview`s using `HnFeedTheme(dynamicColor = false)`. Strings go in resources.
+  has `@Preview`s with a fixed clock and `dynamicColor = false`. Strings go in resources, quantities as plurals.
+- Compose stability: [`compose-stability.conf`](compose-stability.conf) marks `java.time.Instant` and
+  `core.model.*` (direct package only, not subpackages) as stable. That is a promise: model classes must stay
+  deeply immutable (`val`s of immutable types; collections as `List` that is never mutated after creation).
+- Paging lists: key items by id (`itemKey`) and use `contentType`; derive loading/error/empty UI from
+  `LazyPagingItems.loadState`, not from copies in a UiState.
 - ViewModels expose `StateFlow<UiState>` (plus `Flow<PagingData<…>>` for lists); no one-shot event channels.
 - Tests: JUnit4 + `kotlinx-coroutines-test` + Turbine; prefer hand-written fakes over mocks. Network code is tested
   against MockWebServer, DAOs and the data layer against an in-memory Room database under Robolectric, Paging
-  end to end with `paging-testing`'s `asSnapshot`. New behaviour
-  ships with tests in the same PR. Screenshot tests use Roborazzi; re-record baselines only for intended changes.
+  end to end with `paging-testing`'s `asSnapshot`, Compose UI with Compose UI tests on Robolectric. New behaviour
+  ships with tests in the same PR. Screenshot tests use Roborazzi (`hnfeed.android.roborazzi`); re-record
+  baselines only for intended changes and say so in the PR.
 - Formatting is enforced by Spotless (ktlint `android_studio` style + Compose rules); don't hand-format.
 
 ## Workflow

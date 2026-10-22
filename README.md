@@ -14,7 +14,8 @@ if it is missing.
 ```bash
 ./gradlew assembleDebug          # build
 ./gradlew spotlessCheck          # formatting (ktlint + Compose rules); spotlessApply to fix
-./gradlew testDebugUnitTest      # JVM unit tests
+./gradlew testDebugUnitTest      # JVM unit tests (runs screenshot tests without comparing)
+./gradlew verifyRoborazziDebug   # screenshot tests compared with src/test/screenshots (recordRoborazziDebug to update)
 ./gradlew lintDebug              # Android lint
 ./gradlew connectedDebugAndroidTest  # UI tests on a device/emulator
 ```
@@ -30,8 +31,9 @@ if it is missing.
 | `:core:model` | Pure Kotlin domain types (`Story`), shared by every layer |
 | `:core:network` | Hacker News API client (Retrofit + kotlinx.serialization) |
 | `:core:database` | Room database: cached stories and the top-stories snapshot |
-| `:feature:feed` | The story feed screen |
-| `build-logic` | Convention plugins shared by all modules (SDK levels, Compose, Hilt, Room, Kotlin options) |
+| `:core:testing` | Test-only: shared fakes, test data with a fixed "now", `MainDispatcherRule` |
+| `:feature:feed` | The story feed screen: cards, load states, pull-to-refresh |
+| `build-logic` | Convention plugins (SDK levels, Compose, Hilt, Room, Roborazzi, Kotlin options) |
 
 More modules (`:core:imagegen`, `:feature:story`) arrive with the PRs that need them, so no module exists without
 code in it.
@@ -40,7 +42,7 @@ code in it.
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
 Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3. Tests: JUnit4, kotlinx-coroutines-test,
-MockWebServer, Robolectric, paging-testing. All dependency versions live in
+MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dependency versions live in
 [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
 ## Decisions & trade-offs
@@ -108,8 +110,39 @@ MockWebServer, Robolectric, paging-testing. All dependency versions live in
   failures (e.g. a full disk) into `MediatorResult.Error`, which the UI gets as a load state instead of a crash.
 - **APPEND re-checks its page inside the transaction**: if another Pager refreshed while it was fetching, it writes
   nothing, so ids are never marked loaded at arbitrary new ranks. Each Pager gets its own mediator instance.
-- **Known trade-off**: when a refresh re-ranks the cached feed, `LazyColumn` keeps the previous first item in view
-  (items are keyed by id). The feed UI scrolls to the top after a refresh (feed UI PR).
 - **Tests**: the mediator and repository are tested against a real in-memory Room database and a hand-written fake
   network; repository tests run the whole Paging pipeline with `paging-testing`'s `asSnapshot`. `HnDatabase` is
   public only so these cross-module tests can build an in-memory instance.
+
+### Feed UI
+
+- **What the screen shows** is decided by whether stories are on screen, then by Paging's load states:
+
+  | Situation | Shown |
+  | --- | --- |
+  | Stories cached, launch refresh running | the cached list, pull-to-refresh indicator, spinner footer |
+  | Stories cached, refresh failed (offline) | the cached list, "Couldn't refresh" banner and a retry footer |
+  | Nothing cached, first load running | full-screen spinner |
+  | Nothing cached, first load failed | full-screen error with Retry |
+  | Loaded, nothing to show | empty state with a Refresh button |
+  | Scrolled to the end | spinner while the next page loads, retry footer if it fails |
+
+  Until a launch refresh succeeds Paging holds appends back (they report `NotLoading`, not an error), so the footer
+  also reflects the refresh state; otherwise an offline list would simply end with the retry far above.
+- **Scroll to top after a remote refresh**: items are keyed by story id (stable identity, item reuse, TalkBack focus,
+  thumbnails swapping in later), so on its own the list would follow the first visible story to its new rank. Once
+  a refresh has landed the list jumps to the new top. It waits for the combined refresh state, which only settles
+  after Room has re-emitted, so the jump is not undone by the new page arriving a frame later. A refresh skipped
+  because the snapshot is fresh leaves the scroll position alone.
+- **Pull-to-refresh** shows the mediator refresh (network), not the combined state, so it does not flicker on
+  local Room reloads.
+- **Safe links**: only `http(s)` URLs are kept from the API; opening one is guarded because a device without a
+  browser would otherwise crash. Text posts open their HN discussion (until the story detail screen exists).
+- **Time**: "2 hours ago" uses the platform's localized relative time against `LocalClock`, which `MainActivity`
+  sets to the same injected `Clock` the data layer uses; tests fix it. Small clock skew never shows "In 2 minutes".
+- **Screenshot tests** (Roborazzi on Robolectric, `src/test/screenshots`) cover every state in light and dark with
+  the static palette, a fixed clock and the UTC time zone. They were recorded on Windows; CI on Linux may need
+  re-recording (or a small diff threshold) because of font anti-aliasing.
+- **Robolectric on JDK 25**: the API 36 runtime needs `--add-exports java.base/jdk.internal.access`, and Compose's
+  UI test library pulls Espresso 3.5 which breaks on it, so Espresso 3.7 is pinned. Both live in
+  `hnfeed.android.roborazzi`.

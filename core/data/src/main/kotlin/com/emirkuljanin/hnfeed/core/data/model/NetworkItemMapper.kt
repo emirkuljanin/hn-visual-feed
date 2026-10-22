@@ -27,9 +27,13 @@ internal fun NetworkItem.asStoryEntityOrNull(fetchedAt: Instant): StoryEntity? {
         author = author,
         score = score ?: 0,
         postedAt = Instant.ofEpochSecond(time),
-        url = url?.takeIf { it.isNotBlank() },
+        url = url?.takeIf(::isWebUrl),
         commentCount = descendants ?: 0,
         type = storyType,
         fetchedAt = fetchedAt,
     )
 }
+
+/** Only web links are kept: anything else (blank, `javascript:`, app schemes) falls back to the HN discussion page. */
+private fun isWebUrl(url: String): Boolean =
+    url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true)

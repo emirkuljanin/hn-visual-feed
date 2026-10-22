@@ -47,9 +47,9 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 
 1. Project skeleton (build-logic, catalog, Hilt, theme, placeholder feed). *Merged.*
 2. Network + database + models (MockWebServer, in-memory Room tests). *Merged.*
-3. Paging: RemoteMediator, repository, snapshot logic (tests), minimal list wired into the app. *In review.*
+3. Paging: RemoteMediator, repository, snapshot logic (tests), minimal list wired into the app. *Merged.*
 4. Feed UI: cards with placeholders, pull-to-refresh, load/error/empty states with retry, scroll to top after a
-   refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`.
+   refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *In review.*
 5. Image generation: interface, cloud + on-device generators, safety filter, WorkManager, file storage, cleanup.
 6. Story detail + comments (adjacency list in Room, lazy expansion).
 7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
