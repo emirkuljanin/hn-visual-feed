@@ -1,8 +1,11 @@
 package com.emirkuljanin.hnfeed.core.database.dao
 
 import com.emirkuljanin.hnfeed.core.database.DatabaseTest
+import com.emirkuljanin.hnfeed.core.database.storyEntity
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -42,6 +45,30 @@ internal class TopStoryDaoTest : DatabaseTest() {
         dao.replaceSnapshot(listOf(3, 4))
 
         assertEquals(listOf(3L, 4L), dao.nextUnloadedStoryIds(limit = 10))
+    }
+
+    @Test
+    fun snapshotLoadedAt_isNull_untilSomethingIsLoaded() = runTest {
+        database.storyDao().upsert(listOf(storyEntity(1)))
+        dao.replaceSnapshot(listOf(1))
+
+        assertNull(dao.snapshotLoadedAt())
+    }
+
+    @Test
+    fun snapshotLoadedAt_isTheEarliestFetchOfALoadedStory_ignoringStoriesCachedForUnloadedEntries() = runTest {
+        val refreshedAt = Instant.parse("2026-10-23T10:00:00Z")
+        database.storyDao().upsert(
+            listOf(
+                storyEntity(1, fetchedAt = refreshedAt),
+                storyEntity(2, fetchedAt = refreshedAt.plusSeconds(60)),
+                storyEntity(3, fetchedAt = refreshedAt.minusSeconds(3_600)), // Cached from an older snapshot.
+            ),
+        )
+        dao.replaceSnapshot(listOf(1, 2, 3))
+        dao.markLoaded(listOf(1, 2))
+
+        assertEquals(refreshedAt, dao.snapshotLoadedAt())
     }
 
     @Test

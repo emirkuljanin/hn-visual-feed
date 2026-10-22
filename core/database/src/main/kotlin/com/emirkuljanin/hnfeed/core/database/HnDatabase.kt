@@ -13,6 +13,9 @@ import com.emirkuljanin.hnfeed.core.database.util.InstantConverter
  * Schema changes bump [version] and ship a migration (auto-migration where Room can derive it). Exported schemas
  * live in `core/database/schemas`. There is intentionally no destructive fallback, so a missing migration fails
  * loudly in testing instead of silently wiping users' offline cache.
+ *
+ * Public only so other modules' tests can build an in-memory instance; production code gets the DAOs and
+ * [DatabaseTransactionRunner] through Hilt.
  */
 @Database(
     entities = [StoryEntity::class, TopStoryEntity::class],
@@ -20,7 +23,7 @@ import com.emirkuljanin.hnfeed.core.database.util.InstantConverter
     exportSchema = true,
 )
 @ColumnTypeConverters(InstantConverter::class)
-internal abstract class HnDatabase : RoomDatabase() {
+abstract class HnDatabase : RoomDatabase() {
     abstract fun storyDao(): StoryDao
     abstract fun topStoryDao(): TopStoryDao
 }

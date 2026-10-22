@@ -24,7 +24,8 @@ if it is missing.
 | Module | Responsibility |
 | --- | --- |
 | `:app` | Application, Hilt entry point, top-level wiring |
-| `:core:common` | Cross-cutting utilities, currently the injectable coroutine dispatchers |
+| `:core:common` | Cross-cutting utilities: injectable coroutine dispatchers and `Clock` |
+| `:core:data` | Repositories and the Paging `RemoteMediator`: decides when to fetch and writes results to Room |
 | `:core:designsystem` | Material 3 theme and shared UI components |
 | `:core:model` | Pure Kotlin domain types (`Story`), shared by every layer |
 | `:core:network` | Hacker News API client (Retrofit + kotlinx.serialization) |
@@ -32,14 +33,15 @@ if it is missing.
 | `:feature:feed` | The story feed screen |
 | `build-logic` | Convention plugins shared by all modules (SDK levels, Compose, Hilt, Room, Kotlin options) |
 
-More modules (`:core:data`, `:core:imagegen`, `:feature:story`) arrive with the PRs that need them, so no module
-exists without code in it.
+More modules (`:core:imagegen`, `:feature:story`) arrive with the PRs that need them, so no module exists without
+code in it.
 
 ## Tech stack
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
-Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3. Tests: JUnit4, kotlinx-coroutines-test, MockWebServer,
-Robolectric. All dependency versions live in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3. Tests: JUnit4, kotlinx-coroutines-test,
+MockWebServer, Robolectric, paging-testing. All dependency versions live in
+[`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
 ## Decisions & trade-offs
 
@@ -86,3 +88,28 @@ Robolectric. All dependency versions live in [`gradle/libs.versions.toml`](gradl
   ships a migration. A forgotten migration then fails in testing instead of silently wiping the offline cache.
 - **DAO tests on the JVM with Robolectric**: real SQLite and Room, without an emulator, so they run with the
   other unit tests and in CI.
+
+### Paging
+
+- **Room is the paging source, the network only fills it**: the feed is a Room `PagingSource`; the
+  `TopStoriesRemoteMediator` fetches when Paging asks and writes into Room. The UI never sees network data directly,
+  which is what makes the feed work offline.
+- **REFRESH** fetches the ranking and the first page, then replaces the snapshot and writes the page in one
+  transaction (network first, so a failed refresh leaves the old feed). An empty ranking is treated as an error
+  rather than wiping the feed. **APPEND** walks the stored snapshot without re-fetching the ranking. **PREPEND**
+  never happens.
+- **Skip the launch refresh while the snapshot is fresh (15 min)**: otherwise every new Pager (cold start, return
+  after process death) would re-rank the feed and throw away the user's scroll position. The snapshot's age is the
+  earliest `fetched_at` among loaded rows, i.e. when its first page was written. Pull-to-refresh always refreshes.
+- **Page size 20 = one network batch**: each page is one parallel batch of item requests. `initialLoadSize`
+  matches it (the mediator fetches one page per refresh) and placeholders are off: 500 empty cards help nobody.
+- **Error contract**: the network layer throws only `IOException`s (`HnApiException` for unusable responses), so
+  Retrofit and kotlinx.serialization types never leave `:core:network`. The mediator turns those and SQLite
+  failures (e.g. a full disk) into `MediatorResult.Error`, which the UI gets as a load state instead of a crash.
+- **APPEND re-checks its page inside the transaction**: if another Pager refreshed while it was fetching, it writes
+  nothing, so ids are never marked loaded at arbitrary new ranks. Each Pager gets its own mediator instance.
+- **Known trade-off**: when a refresh re-ranks the cached feed, `LazyColumn` keeps the previous first item in view
+  (items are keyed by id). The feed UI scrolls to the top after a refresh (feed UI PR).
+- **Tests**: the mediator and repository are tested against a real in-memory Room database and a hand-written fake
+  network; repository tests run the whole Paging pipeline with `paging-testing`'s `asSnapshot`. `HnDatabase` is
+  public only so these cross-module tests can build an in-memory instance.

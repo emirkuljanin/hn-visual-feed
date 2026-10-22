@@ -5,6 +5,7 @@ import androidx.room3.Insert
 import androidx.room3.Query
 import androidx.room3.Transaction
 import com.emirkuljanin.hnfeed.core.database.model.TopStoryEntity
+import java.time.Instant
 
 @Dao
 abstract class TopStoryDao {
@@ -25,6 +26,20 @@ abstract class TopStoryDao {
 
     @Query("UPDATE top_stories SET is_loaded = 1 WHERE story_id IN (:storyIds)")
     abstract suspend fun markLoaded(storyIds: List<Long>)
+
+    /**
+     * When the current snapshot was refreshed: the earliest fetch time among its loaded stories. A refresh writes
+     * the first page and later appends only add younger rows, so this is the refresh time. `null` if nothing is
+     * loaded yet.
+     */
+    @Query(
+        """
+        SELECT MIN(stories.fetched_at) FROM top_stories
+        INNER JOIN stories ON stories.id = top_stories.story_id
+        WHERE top_stories.is_loaded = 1
+        """,
+    )
+    abstract suspend fun snapshotLoadedAt(): Instant?
 
     @Query("DELETE FROM top_stories")
     protected abstract suspend fun clear()

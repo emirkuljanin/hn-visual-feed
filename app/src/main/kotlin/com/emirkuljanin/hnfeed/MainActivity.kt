@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.emirkuljanin.hnfeed.core.designsystem.theme.HnFeedTheme
-import com.emirkuljanin.hnfeed.feature.feed.FeedScreen
+import com.emirkuljanin.hnfeed.feature.feed.FeedRoute
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             HnFeedTheme {
-                FeedScreen()
+                FeedRoute()
             }
         }
     }

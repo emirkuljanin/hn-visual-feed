@@ -31,14 +31,15 @@ internal abstract class DatabaseTest {
     }
 }
 
-internal fun storyEntity(id: Long, score: Int = 1) = StoryEntity(
-    id = id,
-    title = "Story $id",
-    author = "author$id",
-    score = score,
-    postedAt = Instant.ofEpochSecond(1_700_000_000 + id),
-    url = "https://example.com/$id",
-    commentCount = 0,
-    type = StoryType.STORY,
-    fetchedAt = Instant.ofEpochSecond(1_800_000_000),
-)
+internal fun storyEntity(id: Long, score: Int = 1, fetchedAt: Instant = Instant.ofEpochSecond(1_800_000_000)) =
+    StoryEntity(
+        id = id,
+        title = "Story $id",
+        author = "author$id",
+        score = score,
+        postedAt = Instant.ofEpochSecond(1_700_000_000 + id),
+        url = "https://example.com/$id",
+        commentCount = 0,
+        type = StoryType.STORY,
+        fetchedAt = fetchedAt,
+    )
