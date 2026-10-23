@@ -1,4 +1,4 @@
-import com.android.build.api.dsl.LibraryExtension
+import com.android.build.api.dsl.CommonExtension
 import com.emirkuljanin.hnfeed.buildlogic.library
 import com.emirkuljanin.hnfeed.buildlogic.libs
 import org.gradle.api.Plugin
@@ -15,7 +15,7 @@ class AndroidRoborazziConventionPlugin : Plugin<Project> {
         with(target) {
             pluginManager.apply("io.github.takahirom.roborazzi")
 
-            extensions.configure<LibraryExtension> {
+            extensions.configure<CommonExtension> {
                 testOptions.unitTests.isIncludeAndroidResources = true
                 testOptions.unitTests.all {
                     // Render through the hardware pipeline so shadows and elevation show up in screenshots.

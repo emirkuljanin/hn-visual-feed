@@ -13,6 +13,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -37,6 +38,13 @@ class StoryScreenScreenshotTest {
     /** Scrolled to the comments: nesting, OP badge, placeholder, reply toggles and "more" rows. */
     @Test
     fun comments() = capture("comments", scrollToComments = true) { StoryTestContent(loadedState()) }
+
+    /** The largest font size Android offers (200%), scrolled to nested comments: nothing may clip or overlap. */
+    @Test
+    fun comments_largestFont() {
+        RuntimeEnvironment.setFontScale(2f)
+        capture("comments_largest_font", scrollToComments = true) { StoryTestContent(loadedState()) }
+    }
 
     @Test
     fun comments_loadStates() = capture("comments_load_states", scrollToComments = true) {

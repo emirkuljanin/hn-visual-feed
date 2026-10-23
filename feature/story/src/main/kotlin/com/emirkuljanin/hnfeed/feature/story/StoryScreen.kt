@@ -23,12 +23,18 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -38,12 +44,14 @@ import com.emirkuljanin.hnfeed.core.model.StoryType
 import com.emirkuljanin.hnfeed.core.ui.InlineError
 import com.emirkuljanin.hnfeed.core.ui.LoadingIndicator
 import com.emirkuljanin.hnfeed.core.ui.MessageScreen
+import com.emirkuljanin.hnfeed.core.ui.OfflineBanner
 import com.emirkuljanin.hnfeed.core.ui.PreviewTheme
 import com.emirkuljanin.hnfeed.core.ui.R as CoreUiR
 import com.emirkuljanin.hnfeed.core.ui.StoryLabels
 import com.emirkuljanin.hnfeed.core.ui.StoryThumbnail
 import com.emirkuljanin.hnfeed.core.ui.storyByline
 import com.emirkuljanin.hnfeed.core.ui.storyCounts
+import com.emirkuljanin.hnfeed.core.ui.storyThumbnailKey
 
 @Composable
 fun StoryRoute(
@@ -118,22 +126,44 @@ internal fun StoryScreen(
             .padding(padding)
             .consumeWindowInsets(padding)
         when {
-            story != null -> PullToRefreshBox(
-                isRefreshing = uiState.isRefreshing,
-                onRefresh = onRefresh,
+            story != null -> Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = padding.calculateTopPadding()),
             ) {
-                StoryContent(
-                    story = story,
-                    uiState = uiState,
-                    onRefresh = onRefresh,
-                    onToggleReplies = onToggleReplies,
-                    onLoadMore = onLoadMore,
-                    onOpenLink = onOpenLink,
-                    bottomPadding = padding.calculateBottomPadding(),
-                )
+                // Above the list, not in it: an item inserted above the header would land off-screen, and TalkBack
+                // would never announce it.
+                val bannerModifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                when {
+                    uiState.isOffline -> OfflineBanner(bannerModifier)
+
+                    uiState.refreshFailed -> InlineError(
+                        text = stringResource(R.string.feature_story_refresh_failed),
+                        onRetry = onRefresh,
+                        modifier = bannerModifier,
+                    )
+                }
+                // A pull always shows the indicator. The automatic refresh on opening shows it only over comments:
+                // without them the inline "Loading comments" spinner already says it (one spinner, not two).
+                var pulled by remember { mutableStateOf(false) }
+                LaunchedEffect(uiState.isRefreshing) { if (!uiState.isRefreshing) pulled = false }
+                PullToRefreshBox(
+                    isRefreshing = uiState.isRefreshing && (pulled || uiState.comments.isNotEmpty()),
+                    onRefresh = {
+                        pulled = true
+                        onRefresh()
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    StoryContent(
+                        story = story,
+                        uiState = uiState,
+                        onToggleReplies = onToggleReplies,
+                        onLoadMore = onLoadMore,
+                        onOpenLink = onOpenLink,
+                        bottomPadding = padding.calculateBottomPadding(),
+                    )
+                }
             }
 
             uiState.isRefreshing -> LoadingIndicator(
@@ -141,12 +171,19 @@ internal fun StoryScreen(
                 modifier = contentModifier,
             )
 
-            else -> MessageScreen(
-                title = stringResource(R.string.feature_story_error_title),
-                message = stringResource(R.string.feature_story_error_message),
-                modifier = contentModifier,
-            ) {
-                Button(onClick = onRefresh) { Text(stringResource(CoreUiR.string.core_ui_retry)) }
+            else -> {
+                val offline = uiState.isOffline
+                MessageScreen(
+                    title = stringResource(
+                        if (offline) CoreUiR.string.core_ui_offline_title else R.string.feature_story_error_title,
+                    ),
+                    message = stringResource(
+                        if (offline) CoreUiR.string.core_ui_offline_message else R.string.feature_story_error_message,
+                    ),
+                    modifier = contentModifier,
+                ) {
+                    Button(onClick = onRefresh) { Text(stringResource(CoreUiR.string.core_ui_retry)) }
+                }
             }
         }
     }
@@ -156,7 +193,6 @@ internal fun StoryScreen(
 private fun StoryContent(
     story: Story,
     uiState: StoryUiState,
-    onRefresh: () -> Unit,
     onToggleReplies: (Long) -> Unit,
     onLoadMore: (Long) -> Unit,
     onOpenLink: (String) -> Unit,
@@ -166,15 +202,6 @@ private fun StoryContent(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomPadding + 16.dp),
     ) {
-        if (uiState.refreshFailed) {
-            item(key = "refresh-error", contentType = "refresh-error") {
-                InlineError(
-                    text = stringResource(R.string.feature_story_refresh_failed),
-                    onRetry = onRefresh,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-        }
         item(key = "header", contentType = "header") {
             StoryHeader(story = story, onOpenLink = onOpenLink)
         }
@@ -184,7 +211,9 @@ private fun StoryContent(
                 Text(
                     text = stringResource(R.string.feature_story_comments_title),
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+                    modifier = Modifier
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
+                        .semantics { heading() },
                 )
             }
             commentItems(uiState, onToggleReplies, onLoadMore, onOpenLink)
@@ -240,13 +269,18 @@ private fun StoryHeader(story: Story, onOpenLink: (String) -> Unit) {
     Column {
         StoryThumbnail(
             thumbnail = story.thumbnail,
+            sharedElementKey = storyThumbnailKey(story.id),
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f),
         )
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             StoryLabels(story)
-            Text(text = story.title, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = story.title,
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.semantics { heading() },
+            )
             Text(
                 text = storyByline(story),
                 style = MaterialTheme.typography.bodyMedium,

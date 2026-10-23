@@ -21,9 +21,15 @@ spotless {
         ktlint(ktlintVersion)
             .setEditorConfigPath(rootProject.file(".editorconfig"))
             .customRuleSets(listOf(composeRules))
-            // LocalClock is environment data like LocalConfiguration: every time label reads it, tests override it.
+            // Allowed CompositionLocals are environment data like LocalConfiguration: LocalClock (every time label
+            // reads it, tests override it) and the two shared-element scopes (set once by the app's navigation).
             // (Set here because Spotless does not pass custom rule-set properties through from .editorconfig.)
-            .editorConfigOverride(mapOf("compose_allowed_composition_locals" to "LocalClock"))
+            .editorConfigOverride(
+                mapOf(
+                    "compose_allowed_composition_locals" to
+                        "LocalClock,LocalSharedTransitionScope,LocalNavAnimatedVisibilityScope",
+                ),
+            )
     }
     kotlinGradle {
         target("**/*.kts")

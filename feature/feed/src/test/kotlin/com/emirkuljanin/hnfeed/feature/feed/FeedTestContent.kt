@@ -17,10 +17,11 @@ import kotlinx.coroutines.flow.flowOf
 internal fun FeedTestContent(
     feed: Flow<PagingData<Story>>,
     darkTheme: Boolean = false,
+    isOffline: Boolean = false,
     onStoryClick: (Story) -> Unit = {},
 ) {
     PreviewTheme(darkTheme = darkTheme, now = TEST_NOW) {
-        FeedScreen(stories = feed.collectAsLazyPagingItems(), onStoryClick = onStoryClick)
+        FeedScreen(stories = feed.collectAsLazyPagingItems(), isOffline = isOffline, onStoryClick = onStoryClick)
     }
 }
 

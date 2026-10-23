@@ -1,6 +1,12 @@
 package com.emirkuljanin.hnfeed.feature.feed
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasScrollAction
@@ -84,6 +90,41 @@ class FeedScreenTest {
         composeRule.onNodeWithText("Retry").performClick()
 
         composeRule.onNodeWithText(testStories[0].title).assertIsDisplayed()
+    }
+
+    @Test
+    fun aFailedFirstLoad_isRetriedByItself_whenTheConnectionComesBack() {
+        val source = FlakyPagingSource(failures = 1)
+        var isOffline by mutableStateOf(true)
+        composeRule.setContent {
+            FeedTestContent(Pager(PagingConfig(pageSize = 10)) { source }.flow, isOffline = isOffline)
+        }
+        composeRule.onNodeWithText("You're offline").assertIsDisplayed()
+
+        isOffline = false
+
+        composeRule.onNodeWithText(testStories[0].title).assertIsDisplayed()
+    }
+
+    @Test
+    fun goingOffline_whileReading_showsTheBannerOnScreen_asALiveRegion() {
+        var isOffline by mutableStateOf(false)
+        composeRule.setContent { FeedTestContent(feed(stories = testStories), isOffline = isOffline) }
+        composeRule.onNodeWithText(testStories[0].title).assertIsDisplayed()
+
+        isOffline = true
+
+        composeRule.onNodeWithText("You're offline. Showing what's saved.").assertIsDisplayed()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun offline_withCachedStories_saysSo_insteadOfReportingAFailedRefresh() {
+        composeRule.setContent { FeedTestContent(feed(stories = testStories, refresh = error), isOffline = true) }
+
+        composeRule.onNodeWithText("You're offline. Showing what's saved.").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't refresh. Showing saved stories.").assertDoesNotExist()
     }
 
     @Test

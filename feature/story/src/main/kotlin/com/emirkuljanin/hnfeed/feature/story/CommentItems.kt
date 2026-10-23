@@ -28,12 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.emirkuljanin.hnfeed.core.model.Comment
 import com.emirkuljanin.hnfeed.core.model.CommentStatus
 import com.emirkuljanin.hnfeed.core.ui.R as CoreUiR
 import com.emirkuljanin.hnfeed.core.ui.relativeAge
@@ -46,26 +49,18 @@ internal fun CommentRow(
     modifier: Modifier = Modifier,
 ) {
     val comment = row.comment
+    val replyLevel = if (row.depth > 0) stringResource(R.string.feature_story_reply_level, row.depth) else null
     ThreadIndent(depth = row.depth, modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            CommentHeader(row)
-            when (comment.status) {
-                CommentStatus.VISIBLE -> comment.text?.let { text ->
-                    HtmlText(html = text, onOpenLink = onOpenLink, style = MaterialTheme.typography.bodyMedium)
-                }
-
-                CommentStatus.DELETED, CommentStatus.FLAGGED -> Text(
-                    text = stringResource(
-                        if (comment.status == CommentStatus.DELETED) {
-                            R.string.feature_story_deleted
-                        } else {
-                            R.string.feature_story_flagged
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontStyle = FontStyle.Italic,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // Author, time and text are one TalkBack item; the replies button stays a separate one after it.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    if (replyLevel != null) stateDescription = replyLevel
+                },
+            ) {
+                CommentHeader(row)
+                CommentBody(comment, onOpenLink)
             }
             row.replies?.let { replies ->
                 TextButton(
@@ -87,6 +82,30 @@ internal fun CommentRow(
 }
 
 @Composable
+private fun CommentBody(comment: Comment, onOpenLink: (String) -> Unit) {
+    when (comment.status) {
+        CommentStatus.VISIBLE -> comment.text?.let { text ->
+            HtmlText(html = text, onOpenLink = onOpenLink, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        CommentStatus.DELETED, CommentStatus.FLAGGED -> Text(
+            text = stringResource(
+                if (comment.status ==
+                    CommentStatus.DELETED
+                ) {
+                    R.string.feature_story_deleted
+                } else {
+                    R.string.feature_story_flagged
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = FontStyle.Italic,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun CommentHeader(row: CommentListItem.CommentRow) {
     val comment = row.comment
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -98,7 +117,8 @@ private fun CommentHeader(row: CommentListItem.CommentRow) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.small,
-                modifier = Modifier.semantics { contentDescription = description },
+                // Read as "Story author" rather than the letters "O P".
+                modifier = Modifier.clearAndSetSemantics { contentDescription = description },
             ) {
                 Text(
                     text = stringResource(R.string.feature_story_original_poster),

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.emirkuljanin.hnfeed.core.data.repository.StoryDetailsRepository
+import com.emirkuljanin.hnfeed.core.data.util.NetworkMonitor
 import com.emirkuljanin.hnfeed.core.model.Story
 import com.emirkuljanin.hnfeed.core.model.StoryComments
 import dagger.assisted.Assisted
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -26,17 +29,19 @@ data class StoryUiState(
     val comments: List<CommentListItem> = emptyList(),
     val isRefreshing: Boolean = true,
     val refreshFailed: Boolean = false,
+    val isOffline: Boolean = false,
 )
 
 /**
  * The story screen: refreshes the story and its first comments when opened, then loads more comments as the UI
  * asks. Which comments have their replies expanded is UI state, kept across process death; loaded comments are in
- * the database.
+ * the database. When the connection comes back, whatever failed (the refresh, comment pages) is retried.
  */
 @HiltViewModel(assistedFactory = StoryViewModel.Factory::class)
 class StoryViewModel @AssistedInject constructor(
     @Assisted private val storyId: Long,
     private val repository: StoryDetailsRepository,
+    networkMonitor: NetworkMonitor,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -52,13 +57,19 @@ class StoryViewModel @AssistedInject constructor(
     private val comments: StateFlow<StoryComments?> =
         repository.comments(storyId).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    private val isOnline: StateFlow<Boolean> = networkMonitor.isOnline.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        true,
+    )
+
     val uiState: StateFlow<StoryUiState> = combine(
         repository.story(storyId),
         comments,
         expanded,
         combine(loading, failed, ::Pair),
-        refresh,
-    ) { story, comments, expanded, (loading, failed), refresh ->
+        combine(refresh, isOnline, ::Pair),
+    ) { story, comments, expanded, (loading, failed), (refresh, isOnline) ->
         StoryUiState(
             story = story,
             comments = if (story == null || comments == null) {
@@ -76,11 +87,21 @@ class StoryViewModel @AssistedInject constructor(
             },
             isRefreshing = refresh == RefreshState.RUNNING,
             refreshFailed = refresh == RefreshState.FAILED,
+            isOffline = !isOnline,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), StoryUiState())
 
     init {
         refresh()
+        viewModelScope.launch {
+            // Each time the connection comes back (the first value is the current state, not a change).
+            isOnline.drop(1).filter { it }.collect { retryFailed() }
+        }
+    }
+
+    private fun retryFailed() {
+        if (refresh.value == RefreshState.FAILED) refresh()
+        failed.value.forEach(::loadMore)
     }
 
     fun refresh() {

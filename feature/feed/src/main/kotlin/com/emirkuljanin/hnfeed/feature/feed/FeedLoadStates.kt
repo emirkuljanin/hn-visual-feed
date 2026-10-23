@@ -25,10 +25,14 @@ internal fun FeedLoading(modifier: Modifier = Modifier) {
 
 /** First load failed and there is nothing cached to show instead. */
 @Composable
-internal fun FeedError(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+internal fun FeedError(isOffline: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     MessageScreen(
-        title = stringResource(R.string.feature_feed_error_title),
-        message = stringResource(R.string.feature_feed_error_message),
+        title = stringResource(
+            if (isOffline) CoreUiR.string.core_ui_offline_title else R.string.feature_feed_error_title,
+        ),
+        message = stringResource(
+            if (isOffline) CoreUiR.string.core_ui_offline_message else R.string.feature_feed_error_message,
+        ),
         modifier = modifier,
     ) {
         Button(onClick = onRetry) { Text(stringResource(CoreUiR.string.core_ui_retry)) }
@@ -72,7 +76,7 @@ internal fun AppendFailed(onRetry: () -> Unit, modifier: Modifier = Modifier) {
 @Preview
 @Composable
 private fun FeedErrorPreview() {
-    PreviewTheme { FeedError(onRetry = {}) }
+    PreviewTheme { FeedError(isOffline = false, onRetry = {}) }
 }
 
 @Preview

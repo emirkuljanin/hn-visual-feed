@@ -27,10 +27,25 @@ import com.emirkuljanin.hnfeed.core.model.Thumbnail
  * The generated thumbnail over the placeholder, cross-fading in once decoded. When a preview is upgraded the file
  * path changes; the request then shows the image already on screen (by its memory cache key) until the new one is
  * ready, instead of flashing back to the placeholder.
+ *
+ * With a [sharedElementKey] the thumbnail flies between screens that show it with the same key (feed card to story
+ * header), when the app provides the shared-element scopes; elsewhere the key does nothing.
  */
 @Composable
-fun StoryThumbnail(thumbnail: Thumbnail?, modifier: Modifier = Modifier) {
-    Box(modifier) {
+fun StoryThumbnail(thumbnail: Thumbnail?, modifier: Modifier = Modifier, sharedElementKey: Any? = null) {
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val visibilityScope = LocalNavAnimatedVisibilityScope.current
+    val sharedElement = if (sharedElementKey != null && sharedTransitionScope != null && visibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                rememberSharedContentState(sharedElementKey),
+                animatedVisibilityScope = visibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    Box(modifier.then(sharedElement)) {
         ThumbnailPlaceholder(Modifier.matchParentSize())
         if (thumbnail != null) {
             val context = LocalPlatformContext.current
@@ -38,6 +53,9 @@ fun StoryThumbnail(thumbnail: Thumbnail?, modifier: Modifier = Modifier) {
             val request = remember(thumbnail.filePath) {
                 ImageRequest.Builder(context)
                     .data(thumbnail.filePath)
+                    // One cache entry per file, whatever the size on screen (the files are only 512 px wide anyway),
+                    // so the story header finds the card's image in memory on its first frame of the transition.
+                    .memoryCacheKey(thumbnail.filePath)
                     .placeholderMemoryCacheKey(shownKey)
                     .crossfade(true)
                     .build()

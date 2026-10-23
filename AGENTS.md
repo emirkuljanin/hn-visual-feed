@@ -79,8 +79,9 @@ it automatically through `hnfeed.android.feature`.
 - ViewModels expose `StateFlow<UiState>` (plus `Flow<PagingData<…>>` for lists); no one-shot event channels.
 - Tests: JUnit4 + `kotlinx-coroutines-test` + Turbine; prefer hand-written fakes over mocks. Network code is tested
   against MockWebServer, DAOs and the data layer against an in-memory Room database under Robolectric, Paging
-  end to end with `paging-testing`'s `asSnapshot`, Compose UI with Compose UI tests on Robolectric. New behaviour
-  ships with tests in the same PR. Screenshot tests use Roborazzi (`hnfeed.android.roborazzi`); re-record
+  end to end with `paging-testing`'s `asSnapshot`, Compose UI with Compose UI tests on Robolectric, and flows
+  across screens with app-level tests in `app/src/test` (Hilt, `@TestInstallIn` fakes). New behaviour ships with
+  tests in the same PR. Screenshot tests use Roborazzi (`hnfeed.android.roborazzi`); re-record
   baselines only for intended changes and say so in the PR.
 - Formatting is enforced by Spotless (ktlint `android_studio` style + Compose rules); don't hand-format.
 

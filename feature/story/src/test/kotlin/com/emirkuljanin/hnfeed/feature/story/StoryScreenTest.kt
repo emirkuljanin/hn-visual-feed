@@ -3,15 +3,23 @@ package com.emirkuljanin.hnfeed.feature.story
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import com.emirkuljanin.hnfeed.core.model.StoryType
 import com.emirkuljanin.hnfeed.core.testing.data.testStories
 import kotlin.test.Test
@@ -36,8 +44,21 @@ class StoryScreenTest {
         composeRule.onNodeWithText("by alice · 2 hours ago").assertIsDisplayed()
         scrollTo("Generating the art", substring = true)
         composeRule.onNodeWithText("See my notes on embeddings.", substring = true).assertIsDisplayed()
-        scrollTo("OP")
-        composeRule.onNodeWithContentDescription("Story author").assertExists()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Story author"))
+    }
+
+    @Test
+    fun accessibility_aCommentIsOneItem_repliesSayTheirLevel_andTitlesAreHeadings() {
+        composeRule.setContent { StoryTestContent(loadedState()) }
+
+        composeRule.onNode(hasText(story.title) and isHeading()).assertExists()
+        scrollTo("Thanks! The cloud images come later.")
+        // Merged: one node holds the author, the OP badge's description and the text.
+        composeRule.onNode(
+            hasText("alice") and hasText("Thanks! The cloud images come later.") and
+                hasContentDescription("Story author") and hasStateDescription("Reply, level 1"),
+        ).assertExists()
+        composeRule.onNode(hasText("Comments") and isHeading()).assertExists()
     }
 
     @Test
@@ -102,6 +123,58 @@ class StoryScreenTest {
 
         scrollTo("Comments couldn't be loaded.")
         composeRule.onNodeWithText("No comments yet").assertDoesNotExist()
+    }
+
+    @Test
+    fun goingOffline_whileReading_showsTheBannerOnScreen() {
+        var state by mutableStateOf(loadedState())
+        composeRule.setContent { StoryTestContent(state) }
+        composeRule.onNodeWithText(story.title).assertIsDisplayed()
+
+        state = state.copy(isOffline = true)
+
+        composeRule.onNodeWithText("You're offline. Showing what's saved.").assertIsDisplayed()
+    }
+
+    @Test
+    fun linksInAComment_stillOpen_thoughTheCommentIsOneAccessibilityItem() {
+        val opened = mutableListOf<String>()
+        composeRule.setContent { StoryTestContent(loadedState(), onOpenLink = { opened += it }) }
+        scrollTo("Generating the art", substring = true)
+
+        composeRule.onNode(hasText("Generating the art", substring = true)).performFirstLinkClick()
+
+        assertEquals(listOf("https://example.com/notes"), opened)
+    }
+
+    @Test
+    fun aPullShowsTheIndicator_evenWithoutComments() {
+        var state by mutableStateOf(StoryUiState(story = story, isRefreshing = false))
+        composeRule.setContent {
+            // Like the ViewModel: a pull starts a refresh.
+            StoryTestContent(state, onRefresh = { state = state.copy(isRefreshing = true) })
+        }
+
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeDown() }
+
+        composeRule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
+    }
+
+    @Test
+    fun offline_showsTheOfflineNote_insteadOfTheRefreshError() {
+        composeRule.setContent { StoryTestContent(loadedState(refreshFailed = true).copy(isOffline = true)) }
+
+        composeRule.onNodeWithText("You're offline. Showing what's saved.").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't refresh. Showing saved comments.").assertDoesNotExist()
+    }
+
+    @Test
+    fun firstLoad_withNoCommentsCached_showsOneSpinner_notAlsoThePullToRefreshOne() {
+        composeRule.setContent { StoryTestContent(StoryUiState(story = story, isRefreshing = true)) }
+
+        // Only the header is on screen: the pull-to-refresh indicator must not spin as well.
+        composeRule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Loading comments"))
     }
 
     @Test
