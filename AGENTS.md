@@ -34,7 +34,8 @@ Module dependency direction (arrows = "may depend on"); a module is added by the
              └────────> :core:designsystem
 ```
 
-Any Android module may depend on `:core:common` (injectable dispatchers and other small utilities).
+Any Android module may depend on `:core:common` (injectable dispatchers, `Clock` and other small utilities).
+`:core:imagegen` exposes only `ThumbnailGenerator` (an interface) and its request/result types; generators are internal.
 `:core:testing` (shared fakes, test data, `MainDispatcherRule`) is only ever a test dependency; feature modules get
 it automatically through `hnfeed.android.feature`.
 
@@ -43,8 +44,9 @@ it automatically through `hnfeed.android.feature`.
 - Features talk only to repositories in `:core:data`, never to Retrofit or Room directly.
 - **Room is the single source of truth.** The network and the image generator write into the database; the UI
   only observes database-backed `Flow`s / `PagingData`.
-- **Threading**: classes that do blocking work are main-safe and switch dispatchers themselves, using an injected
-  `CoroutineDispatcher` (never a hard-coded `Dispatchers.IO`), so tests can substitute a test dispatcher.
+- **Threading**: classes that do blocking or CPU-heavy work are main-safe and switch dispatchers themselves, using an
+  injected `@IoDispatcher` (network, disk, database) or `@DefaultDispatcher` (image work, inference)
+  (never a hard-coded `Dispatchers.IO`/`Default`), so tests can substitute a test dispatcher.
   No `GlobalScope`, no `runBlocking` outside tests. Long-lived background work goes through WorkManager.
 - **Time**: inject `java.time.Clock` (provided by `:core:common`); never call `Instant.now()` directly. Compose code
   reads it from `LocalClock`, which `MainActivity` sets to the injected clock and tests set to a fixed one.

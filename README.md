@@ -20,6 +20,20 @@ if it is missing.
 ./gradlew connectedDebugAndroidTest  # UI tests on a device/emulator
 ```
 
+### Optional: cloud thumbnails
+
+Without credentials every thumbnail is generated on device. To use FLUX.1 [schnell] on Cloudflare Workers AI,
+create a free Cloudflare account and an API token from the **Workers AI** template, and add both to
+`local.properties` (gitignored) or the environment:
+
+```properties
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_TOKEN=your-token
+```
+
+The free tier is 10,000 neurons a day, about 170 images. Use a token scoped to Workers AI only: it is compiled
+into the APK, so anyone with the APK can extract it (see "Image generation" below).
+
 ## Modules
 
 | Module | Responsibility |
@@ -28,6 +42,7 @@ if it is missing.
 | `:core:common` | Cross-cutting utilities: injectable coroutine dispatchers and `Clock` |
 | `:core:data` | Repositories and the Paging `RemoteMediator`: decides when to fetch and writes results to Room |
 | `:core:designsystem` | Material 3 theme and shared UI components |
+| `:core:imagegen` | Story thumbnails: cloud text-to-image, on-device embedding + procedural art, safety filter |
 | `:core:model` | Pure Kotlin domain types (`Story`), shared by every layer |
 | `:core:network` | Hacker News API client (Retrofit + kotlinx.serialization) |
 | `:core:database` | Room database: cached stories and the top-stories snapshot |
@@ -35,13 +50,13 @@ if it is missing.
 | `:feature:feed` | The story feed screen: cards, load states, pull-to-refresh |
 | `build-logic` | Convention plugins (SDK levels, Compose, Hilt, Room, Roborazzi, Kotlin options) |
 
-More modules (`:core:imagegen`, `:feature:story`) arrive with the PRs that need them, so no module exists without
-code in it.
+More modules (`:feature:story`) arrive with the PRs that need them, so no module exists without code in it.
 
 ## Tech stack
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
-Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3. Tests: JUnit4, kotlinx-coroutines-test,
+Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, MediaPipe Tasks (text embedder), Cloudflare
+Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
 MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dependency versions live in
 [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
@@ -146,3 +161,44 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
 - **Robolectric on JDK 25**: the API 36 runtime needs `--add-exports java.base/jdk.internal.access`, and Compose's
   UI test library pulls Espresso 3.5 which breaks on it, so Espresso 3.7 is pinned. Both live in
   `hnfeed.android.roborazzi`.
+
+### Image generation (`:core:imagegen`)
+
+- **A chain of generators**: `ThumbnailGenerator` tries generators in priority order; the first that may handle a
+  title and succeeds wins. Cloud comes first (when credentials exist and the title passes the safety filter),
+  on-device last (always works). Any cloud failure falls through to on-device art. Transient ones (offline,
+  timeout, quota, server error) mark the result `isFallback` so the pipeline can retry it later; permanent ones
+  (moderation, bad credentials: 4xx other than 408/429) do not, since a retry would fail the same way. A future generator (on-device diffusion,
+  PR 8) slots into the list without other changes. Every generator returns the same 512x288 WebP.
+- **Cloud: FLUX.1 [schnell] on Cloudflare Workers AI**. The plan was Pollinations' keyless API, but since October
+  2026 it answers `402 Payment Required` for every new prompt, so a free keyless cloud option no longer exists.
+  Cloudflare's free tier (10k neurons/day) covers about 170 images (about 58 neurons per 1024x1024 image at 4
+  steps); after that the cloud fails and on-device takes over. Generation takes about 2 s.
+- **Prompt, tuned against the real model**: "illustration of the headline" made FLUX draw screens and documents
+  full of pseudo-text, and negations ("no text") do not help. "An abstract visual metaphor for: <title>, shapes
+  and colour only" gives wordless, on-topic images. The phrase "safe for work" is avoided: Cloudflare's prompt
+  classifier flags it as NSFW.
+- **Safety**: a small blocklist of sexual, violent and self-harm words, stems and phrases, matched on normalised
+  whole words (so "Sussex" and "U.S. ex-president" pass). Flagged titles go on-device, where procedural art cannot
+  depict anything. Cloudflare also screens prompts itself (it has no image "safe mode"); rejected prompts fall back
+  too. The list is one layer, not a classifier: it misses things and does not cover hate speech.
+- **On-device: MediaPipe text embedder + procedural art**. Google's Universal Sentence Encoder (6 MB TFLite in
+  assets, Apache-2.0, see `core/imagegen/NOTICE.md`) turns the title into 100 numbers; similar titles give nearby
+  vectors. A painter maps the vector to palette, gradient, glowing orbs and a wave. The mapping is continuous
+  (each parameter is a projection of the whole vector; hue is the angle of a 2-D projection), so related stories
+  look related, and deterministic (a fixed SplitMix64 generator, not `kotlin.random`, whose sequence may change
+  between Kotlin versions). If the model cannot load, art is seeded from the title text instead, never a crash.
+- **Threading**: only HTTP runs on the IO dispatcher; JSON, base64, decoding (subsampled: 1024 px decodes at
+  512 px), drawing and WebP encoding run on the CPU dispatcher; the embedder serialises MediaPipe calls.
+- **Costs to know about**:
+  - The API token is compiled into the APK and can be extracted. Acceptable for a demo on a free, scoped token;
+    production would call its own backend that holds the key, rate-limits and moderates.
+  - MediaPipe's native libraries are large: about 14 MB (arm64) for the embedder runtime, plus about 15 MB of a
+    text-generation library in the `tasks-text` artifact that the embedder never loads. PR 5b excludes the latter
+    in the app module; an App Bundle then delivers one ABI per device. All libraries are 16 KB page aligned.
+  - Inference runs fully on device, but MediaPipe may send anonymous usage statistics to Google.
+- **Tests**: the chain, filter, prompt, encoder and Cloudflare client (MockWebServer with the real response
+  envelope, including a moderation rejection and cancellation) run on the JVM; the painter is covered by
+  determinism/similarity tests and a Roborazzi contact sheet (`core/imagegen/src/test/screenshots`). The real
+  MediaPipe model and one real Cloudflare call run as instrumented tests; the Cloudflare one costs quota, so it
+  only runs with `-Pandroid.testInstrumentationRunnerArguments.liveCloudflare=true` and credentials.
