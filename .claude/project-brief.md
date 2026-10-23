@@ -51,7 +51,8 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   A module is added by the PR that first needs it.
 - **Process**: one PR (Gitblit ticket) per task. Before a ticket is opened, the `pr-reviewer` agent reviews the
   diff and its findings are fixed or answered. The user then reviews and merges each PR before the next starts.
-  Finally the repo moves to GitHub with GitHub Actions CI.
+  Finally (PR 9) the repo moves to GitHub with GitHub Actions CI; until then everything is reviewed and fine-tuned
+  on Gitblit.
 
 ## PR plan
 
@@ -67,12 +68,14 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
      ABI filters, R8 check of the embedder in a release build). *Merged.*
 6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
    `:app`, shared composables moved to `:core:ui`). *In review.*
-7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
+7. Polish: offline/error states, Compose UI tests, README decisions.
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check
    (RAM, arm64, SoC, free storage, Vulkan, thermal) and a one-step benchmark, Wi-Fi/charging-only model download,
    `DiffusionImageGenerator` behind the existing interface. Testable on the user's physical Pixel 7 Pro (Tensor G2,
    CPU/GPU path, no Qualcomm NPU). If time runs out: a commented skeleton. PR 5 must leave the generator-selection
    strategy ready for it.
+9. Move to GitHub with GitHub Actions CI (build, tests, lint, screenshot verification). Last, so everything is
+   fine-tuned on Gitblit first.
 
 ## Environment
 
