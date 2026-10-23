@@ -2,10 +2,13 @@ package com.emirkuljanin.hnfeed.feature.feed
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.paging.LoadState
 import androidx.paging.LoadStates
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
+import coil3.annotation.ExperimentalCoilApi
+import coil3.compose.LocalAsyncImagePreviewHandler
 import com.emirkuljanin.hnfeed.core.designsystem.theme.HnFeedTheme
 import com.emirkuljanin.hnfeed.core.designsystem.time.LocalClock
 import com.emirkuljanin.hnfeed.core.model.Story
@@ -16,14 +19,22 @@ import java.time.ZoneOffset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
-/** [FeedScreen] with a fixed clock and the static palette, so tests and screenshots are deterministic. */
+/**
+ * [FeedScreen] with a fixed clock, the static palette and drawn thumbnails (Coil's preview handler, which needs
+ * inspection mode), so tests and screenshots are deterministic.
+ */
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 internal fun FeedTestContent(
     feed: Flow<PagingData<Story>>,
     darkTheme: Boolean = false,
     onStoryClick: (Story) -> Unit = {},
 ) {
-    CompositionLocalProvider(LocalClock provides Clock.fixed(TEST_NOW, ZoneOffset.UTC)) {
+    CompositionLocalProvider(
+        LocalClock provides Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+        LocalInspectionMode provides true,
+        LocalAsyncImagePreviewHandler provides previewThumbnails,
+    ) {
         HnFeedTheme(darkTheme = darkTheme, dynamicColor = false) {
             FeedScreen(stories = feed.collectAsLazyPagingItems(), onStoryClick = onStoryClick)
         }

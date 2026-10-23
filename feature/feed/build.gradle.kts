@@ -10,6 +10,7 @@ android {
 dependencies {
     implementation(projects.core.data)
     implementation(libs.androidx.paging.compose)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.androidx.paging.testing)
 }

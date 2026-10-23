@@ -26,17 +26,22 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   `local.properties`/env (optional; without them everything is on-device). Pollinations was the original plan, but
   its anonymous API answers 402 Payment Required for new prompts since Oct 2026. On-device last: MediaPipe
   Universal Sentence Encoder (6 MB, committed) embeds the title, procedural art is painted from the embedding.
-  A result is marked `isFallback` when the cloud was allowed but failed, so 5b can retry it later. No mandatory
+  Two tiers (agreed for 5b): every story gets on-device art at once, then is upgraded to a cloud image as the
+  free quota allows, best rank first; at the quota (HTTP 429, code 3036), upgrades pause until it resets
+  (midnight UTC). No mandatory
   model download (opt-in diffusion: PR 8).
 - **Safety**: title blocklist (words, stems, phrases) plus an abstract "visual metaphor" prompt; Cloudflare also
-  screens prompts (HTTP 400, falls back). Flagged titles go to the on-device generator, which cannot depict anything.
+  screens prompts (HTTP 400, the preview stays). Flagged titles go to the on-device generator, which cannot depict anything.
 - **Pagination**: Paging 3 `RemoteMediator`, automatic loading. REFRESH fetches the ~500 top IDs once and stores
   a snapshot table `(rank, storyId)`; APPEND slices the stored snapshot and fetches item details in parallel.
   PagingSource = Room join of snapshot + story + thumbnail ordered by rank.
 - **Storage**: images as ~512 px WebP files in `filesDir/thumbnails/`, path + status in a separate `thumbnail`
   table (story upserts never clobber images). Evict rows/files for stories no longer in the snapshot after N days.
-- **Generation scheduling**: rows inserted as `PENDING`; one unique WorkManager job drains PENDING in rank order
-  with bounded concurrency, retry with backoff; cards observe status via Room and swap placeholder → image.
+- **Generation scheduling**: unique WorkManager jobs. Previews: every visible story without a thumbnail, in rank
+  order, bounded concurrency; when done they enqueue upgrades. Upgrades: `PENDING` rows in rank order; stop at the
+  quota (persisted pause + a separate delayed resume job), when the provider is unreachable or busy (backoff, not
+  counted) or at a per-story transient error (backoff, give up after 3); cards observe Room and swap
+  placeholder → preview → cloud image.
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
   Room 3 (platform SQLite driver), Paging 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
   stable versions.
@@ -55,10 +60,10 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 4. Feed UI: cards with placeholders, pull-to-refresh, load/error/empty states with retry, scroll to top after a
    refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *Merged.*
 5. Image generation, split in two:
-   - 5a. `:core:imagegen`: generator chain, Cloudflare + on-device generators, safety filter. *In review.*
+   - 5a. `:core:imagegen`: generator chain, Cloudflare + on-device generators, safety filter. *Merged.*
    - 5b. Pipeline: `thumbnails` table (first Room migration), WorkManager job, file storage and cleanup, cards show
-     images, retry of `isFallback` rows, app wiring (exclude MediaPipe's unused textgenai `.so`, ABI filters, R8
-     check of the embedder in a release build).
+     images, two-tier preview/upgrade with a quota pause, app wiring (exclude MediaPipe's unused textgenai `.so`,
+     ABI filters, R8 check of the embedder in a release build). *In review.*
 6. Story detail + comments (adjacency list in Room, lazy expansion).
 7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check

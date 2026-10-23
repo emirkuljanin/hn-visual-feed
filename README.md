@@ -40,12 +40,12 @@ into the APK, so anyone with the APK can extract it (see "Image generation" belo
 | --- | --- |
 | `:app` | Application, Hilt entry point, top-level wiring |
 | `:core:common` | Cross-cutting utilities: injectable coroutine dispatchers and `Clock` |
-| `:core:data` | Repositories and the Paging `RemoteMediator`: decides when to fetch and writes results to Room |
+| `:core:data` | Repositories, the Paging `RemoteMediator` and the thumbnail pipeline (WorkManager): write into Room |
 | `:core:designsystem` | Material 3 theme and shared UI components |
 | `:core:imagegen` | Story thumbnails: cloud text-to-image, on-device embedding + procedural art, safety filter |
 | `:core:model` | Pure Kotlin domain types (`Story`), shared by every layer |
 | `:core:network` | Hacker News API client (Retrofit + kotlinx.serialization) |
-| `:core:database` | Room database: cached stories and the top-stories snapshot |
+| `:core:database` | Room database: cached stories, the top-stories snapshot and thumbnail state |
 | `:core:testing` | Test-only: shared fakes, test data with a fixed "now", `MainDispatcherRule` |
 | `:feature:feed` | The story feed screen: cards, load states, pull-to-refresh |
 | `build-logic` | Convention plugins (SDK levels, Compose, Hilt, Room, Roborazzi, Kotlin options) |
@@ -55,8 +55,8 @@ More modules (`:feature:story`) arrive with the PRs that need them, so no module
 ## Tech stack
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
-Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, MediaPipe Tasks (text embedder), Cloudflare
-Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
+Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, WorkManager, Coil 3, MediaPipe Tasks (text
+embedder), Cloudflare Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
 MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dependency versions live in
 [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
@@ -164,24 +164,26 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
 
 ### Image generation (`:core:imagegen`)
 
-- **A chain of generators**: `ThumbnailGenerator` tries generators in priority order; the first that may handle a
-  title and succeeds wins. Cloud comes first (when credentials exist and the title passes the safety filter),
-  on-device last (always works). Any cloud failure falls through to on-device art. Transient ones (offline,
-  timeout, quota, server error) mark the result `isFallback` so the pipeline can retry it later; permanent ones
-  (moderation, bad credentials: 4xx other than 408/429) do not, since a retry would fail the same way. A future generator (on-device diffusion,
-  PR 8) slots into the list without other changes. Every generator returns the same 512x288 WebP.
+- **Two tiers: a preview, then an upgrade**: `ThumbnailGenerator.generatePreview` always succeeds with on-device
+  art in well under a second, offline and without quota, so no card waits on the network. `generateUpgrade` tries
+  the better generators (cloud today, on-device diffusion in PR 8) in order and reports what happened:
+  `Upgraded`, `NotApplicable` (no credentials, or the safety filter keeps the title on device), `Rejected`
+  (moderation or bad credentials: 4xx other than 408/429; a retry would fail the same way), `QuotaExhausted`
+  (HTTP 429 with Cloudflare's code 3036, the daily free allocation), `Unavailable` (no connection, DNS, 429
+  "capacity temporarily exceeded" or 502-504: nothing to do with the story) or `RetryLater` (timeout, HTTP 500,
+  unreadable image). The pipeline decides what each outcome means. Every generator returns the same 512x288 WebP.
 - **Cloud: FLUX.1 [schnell] on Cloudflare Workers AI**. The plan was Pollinations' keyless API, but since October
   2026 it answers `402 Payment Required` for every new prompt, so a free keyless cloud option no longer exists.
   Cloudflare's free tier (10k neurons/day) covers about 170 images (about 58 neurons per 1024x1024 image at 4
-  steps); after that the cloud fails and on-device takes over. Generation takes about 2 s.
+  steps); after that the pipeline pauses upgrades until the quota resets. Generation takes about 2 s.
 - **Prompt, tuned against the real model**: "illustration of the headline" made FLUX draw screens and documents
   full of pseudo-text, and negations ("no text") do not help. "An abstract visual metaphor for: <title>, shapes
   and colour only" gives wordless, on-topic images. The phrase "safe for work" is avoided: Cloudflare's prompt
   classifier flags it as NSFW.
 - **Safety**: a small blocklist of sexual, violent and self-harm words, stems and phrases, matched on normalised
   whole words (so "Sussex" and "U.S. ex-president" pass). Flagged titles go on-device, where procedural art cannot
-  depict anything. Cloudflare also screens prompts itself (it has no image "safe mode"); rejected prompts fall back
-  too. The list is one layer, not a classifier: it misses things and does not cover hate speech.
+  depict anything. Cloudflare also screens prompts itself (it has no image "safe mode"); rejected prompts keep
+  their preview. The list is one layer, not a classifier: it misses things and does not cover hate speech.
 - **On-device: MediaPipe text embedder + procedural art**. Google's Universal Sentence Encoder (6 MB TFLite in
   assets, Apache-2.0, see `core/imagegen/NOTICE.md`) turns the title into 100 numbers; similar titles give nearby
   vectors. A painter maps the vector to palette, gradient, glowing orbs and a wave. The mapping is continuous
@@ -193,12 +195,60 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
 - **Costs to know about**:
   - The API token is compiled into the APK and can be extracted. Acceptable for a demo on a free, scoped token;
     production would call its own backend that holds the key, rate-limits and moderates.
-  - MediaPipe's native libraries are large: about 14 MB (arm64) for the embedder runtime, plus about 15 MB of a
-    text-generation library in the `tasks-text` artifact that the embedder never loads. PR 5b excludes the latter
-    in the app module; an App Bundle then delivers one ABI per device. All libraries are 16 KB page aligned.
+  - MediaPipe's native library is large: 14 MB for arm64, 18 MB for x86_64. The `tasks-text` artifact also
+    bundles a text-generation library the embedder never loads; the app excludes it and keeps only the arm64-v8a
+    and x86_64 ABIs (phones and emulators). The release APK grows from 1.5 MB to 40 MB (21 MB compressed):
+    native libraries are stored uncompressed and 16 KB aligned so they load straight from the APK. An App Bundle
+    on Play would deliver one ABI: about 25 MB installed on an arm64 phone.
   - Inference runs fully on device, but MediaPipe may send anonymous usage statistics to Google.
 - **Tests**: the chain, filter, prompt, encoder and Cloudflare client (MockWebServer with the real response
   envelope, including a moderation rejection and cancellation) run on the JVM; the painter is covered by
   determinism/similarity tests and a Roborazzi contact sheet (`core/imagegen/src/test/screenshots`). The real
   MediaPipe model and one real Cloudflare call run as instrumented tests; the Cloudflare one costs quota, so it
   only runs with `-Pandroid.testInstrumentationRunnerArguments.liveCloudflare=true` and credentials.
+
+### Thumbnail pipeline (`:core:data`)
+
+- **Phase 1, previews**: whenever the mediator writes a page (and when the feed is collected), a unique
+  `ThumbnailPreviewWorker` gives every story in the visible feed without a thumbnail its on-device art, best rank
+  first, a few in parallel. The feed shows it as soon as the row is written, a moment after the card appears. A
+  story whose preview fails is tried again on the next page load or app start, not with backoff, which would hold
+  every later preview run back.
+- **Phase 2, upgrades**: the preview worker ends by enqueuing a unique `ThumbnailUpgradeWorker` (network required),
+  so an upgrade run never starts before the previews it would upgrade exist. It replaces previews with cloud
+  images, best rank first, two at a time, so the roughly 170 free images a day go to what the user actually sees.
+  - `QuotaExhausted` stops the run and pauses upgrades until just after midnight UTC, when Cloudflare's daily
+    allowance resets. The pause is persisted, so runs started meanwhile end without calling the API, and a separate
+    delayed job (KEEP, outside the upgrade queue, so requests during the pause never pile up behind it) restarts
+    upgrades after the reset. Until then cards keep their previews; nothing is lost.
+  - `Unavailable` stops the run without counting against any story, and WorkManager retries with exponential
+    backoff. Otherwise a provider outage would make the best-ranked stories give up for good.
+  - `RetryLater` stops the run the same way but counts an attempt for that story; after 3 it is given up, so one
+    story that always times out cannot block the queue.
+  - `NotApplicable` and `Rejected` are final: the preview stays.
+- **State in Room, images on disk**: a separate `thumbnails` table (story id, file name, source, upgrade state,
+  attempts) so story upserts never touch it; the feed query left-joins it. It is the first schema change:
+  version 2 uses a Room auto-migration, verified on a device by `MigrationTest` (`MigrationTestHelper` with the
+  exported schemas). Rows cascade-delete with their story.
+- **Files**: WebP in `filesDir/thumbnails`, one name per version (`<id>-on_device.webp`, `<id>-cloud.webp`), so
+  an upgrade never overwrites a file the UI may be reading and Coil's cache never shows a stale image. Writes go
+  to a temp file, synced to disk and renamed into place, so neither a crash nor a power loss leaves a half-written
+  image. The file is written before its row and the replaced file deleted after it, so a crash leaves at worst an
+  orphan file, never a row pointing at nothing.
+- **Database errors**: only a foreign-key failure means "the story was deleted meanwhile" and is skipped. Any other
+  (e.g. a full disk) counts as a failure for that story, so a run cannot loop on it and, for upgrades, spend the
+  quota on the same story again and again.
+- **Cleanup**: after the preview pass, stories that are no longer in the snapshot and were fetched over 7 days ago
+  are deleted (their rows go with them) and files no row references are swept; files younger than 10 minutes are
+  spared, since their row may not be committed yet.
+- **Cards**: Coil loads the file over the placeholder with a crossfade. When a preview is upgraded the request
+  uses the image on screen as its placeholder (by memory cache key), so the card goes straight from preview to
+  cloud image without flashing the placeholder. Previews and screenshot tests draw thumbnails with Coil's preview
+  handler, so they need no files.
+- **WorkManager with Hilt**: workers are `@HiltWorker`s; the app supplies `HiltWorkerFactory` through
+  `Configuration.Provider` and removes WorkManager's default initializer from the manifest.
+- **Tests**: the pipeline runs against an in-memory Room database, a temp directory and a fake generator
+  (ordering, idempotence, failures that must not loop, stories deleted mid-generation, quota pause and resume,
+  unavailable vs. per-story failures, give-up after 3 attempts, cleanup). Workers are tested with
+  `TestListenableWorkerBuilder`, the scheduler against WorkManager's test implementation (`TestDriver`: network
+  constraint, quota-resume delay, unique-work policies); the store and the pause have their own tests.

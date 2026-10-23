@@ -16,10 +16,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -28,9 +32,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.memory.MemoryCache
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.emirkuljanin.hnfeed.core.designsystem.time.LocalClock
 import com.emirkuljanin.hnfeed.core.model.Story
 import com.emirkuljanin.hnfeed.core.model.StoryType
+import com.emirkuljanin.hnfeed.core.model.Thumbnail
 import java.net.URI
 import java.time.Instant
 
@@ -41,7 +51,8 @@ internal fun StoryCard(story: Story, onClick: () -> Unit, modifier: Modifier = M
         onClick = onClick,
         modifier = modifier.semantics { onClick(label = openLabel, action = null) },
     ) {
-        ThumbnailPlaceholder(
+        StoryThumbnail(
+            thumbnail = story.thumbnail,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f),
@@ -108,7 +119,37 @@ private fun StoryLabels(story: Story) {
     }
 }
 
-/** Where the generated thumbnail will go; shown until it is ready. */
+/**
+ * The generated thumbnail over the placeholder, cross-fading in once decoded. When a preview is upgraded the file
+ * path changes; the request then shows the image already on screen (by its memory cache key) until the new one is
+ * ready, instead of flashing back to the placeholder.
+ */
+@Composable
+private fun StoryThumbnail(thumbnail: Thumbnail?, modifier: Modifier = Modifier) {
+    Box(modifier) {
+        ThumbnailPlaceholder(Modifier.matchParentSize())
+        if (thumbnail != null) {
+            val context = LocalPlatformContext.current
+            var shownKey by remember { mutableStateOf<MemoryCache.Key?>(null) }
+            val request = remember(thumbnail.filePath) {
+                ImageRequest.Builder(context)
+                    .data(thumbnail.filePath)
+                    .placeholderMemoryCacheKey(shownKey)
+                    .crossfade(true)
+                    .build()
+            }
+            AsyncImage(
+                model = request,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onSuccess = { shownKey = it.result.memoryCacheKey },
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+    }
+}
+
+/** Shown until the thumbnail is ready, and kept if it never is. */
 @Composable
 private fun ThumbnailPlaceholder(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme

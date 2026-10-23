@@ -52,6 +52,6 @@ internal class RoomDatabaseTransactionRunnerTest : DatabaseTest() {
 
     private suspend fun feedIds(): List<Long> {
         val page = storyDao.topStoriesPagingSource().load(LoadParams.Refresh(key = null, loadSize = 10, false))
-        return (page as LoadResult.Page).data.map { it.id }
+        return (page as LoadResult.Page).data.map { it.story.id }
     }
 }

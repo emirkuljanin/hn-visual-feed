@@ -3,6 +3,8 @@ package com.emirkuljanin.hnfeed.core.imagegen.cloud
 import com.emirkuljanin.hnfeed.core.imagegen.ImageRequest
 import com.emirkuljanin.hnfeed.core.imagegen.ImageSource
 import com.emirkuljanin.hnfeed.core.imagegen.PermanentGenerationException
+import com.emirkuljanin.hnfeed.core.imagegen.ProviderUnavailableException
+import com.emirkuljanin.hnfeed.core.imagegen.QuotaExceededException
 import com.emirkuljanin.hnfeed.core.imagegen.THUMBNAIL_WIDTH
 import com.emirkuljanin.hnfeed.core.imagegen.encode.ThumbnailEncoder
 import com.emirkuljanin.hnfeed.core.imagegen.safety.TitleSafetyFilter
@@ -87,12 +89,55 @@ class CloudflareImageGeneratorTest {
     }
 
     @Test
-    fun generate_reportsRateLimitsAndServerErrorsAsTransient() = runTest {
-        listOf(429, 503, 408).forEach { code ->
+    fun generate_reportsTheDailyAllocationAsQuotaExceeded() = runTest {
+        server.enqueue(
+            MockResponse(
+                code = 429,
+                body = """{"success":false,"errors":[{"code":3036,"message":"Daily free allocation used up"}]}""",
+            ),
+        )
+
+        assertFailsWith<QuotaExceededException> { generator().generate(request) }
+    }
+
+    @Test
+    fun generate_reportsOtherHttp429sAsTheProviderBeingUnavailable() = runTest {
+        server.enqueue(
+            MockResponse(
+                code = 429,
+                body = """{"success":false,"errors":[{"code":3040,"message":"Capacity temporarily exceeded"}]}""",
+            ),
+        )
+        server.enqueue(MockResponse(code = 429, body = "{}"))
+        server.enqueue(MockResponse(code = 503, body = "{}"))
+
+        repeat(3) { assertFailsWith<ProviderUnavailableException> { generator().generate(request) } }
+    }
+
+    @Test
+    fun generate_recognisesTheDailyAllocationByItsMessage_whenTheCodeIsMissing() = runTest {
+        server.enqueue(
+            MockResponse(
+                code = 429,
+                body = """{"success":false,"errors":[{"message":"You have used up your daily free allocation"}]}""",
+            ),
+        )
+
+        assertFailsWith<QuotaExceededException> { generator().generate(request) }
+    }
+
+    @Test
+    fun generate_reportsTimeoutsAndServerErrorsAsTransient() = runTest {
+        listOf(500, 408).forEach { code ->
             server.enqueue(MockResponse(code = code, body = "{}"))
 
             val error = assertFailsWith<IOException> { generator().generate(request) }
-            assertFalse(error is PermanentGenerationException, "HTTP $code should be retryable")
+            assertFalse(
+                error is PermanentGenerationException ||
+                    error is QuotaExceededException ||
+                    error is ProviderUnavailableException,
+                "HTTP $code",
+            )
         }
     }
 

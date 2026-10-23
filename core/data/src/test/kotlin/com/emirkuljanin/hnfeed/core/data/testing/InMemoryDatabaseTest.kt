@@ -47,6 +47,6 @@ internal abstract class InMemoryDatabaseTest {
     /** Ids currently visible in the feed, read through the same query the UI uses. */
     protected suspend fun feedIds(): List<Long> {
         val result = storyDao.topStoriesPagingSource().load(LoadParams.Refresh(key = null, loadSize = 500, false))
-        return (result as LoadResult.Page).data.map { it.id }
+        return (result as LoadResult.Page).data.map { it.story.id }
     }
 }

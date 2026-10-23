@@ -82,6 +82,6 @@ internal class StoryDaoTest : DatabaseTest() {
         val result = storyDao.topStoriesPagingSource().load(
             PagingSource.LoadParams.Refresh(key = null, loadSize = 100, placeholdersEnabled = false),
         )
-        return (result as LoadResult.Page).data
+        return (result as LoadResult.Page).data.map { it.story }
     }
 }

@@ -13,6 +13,8 @@ data class Story(
     val url: String?,
     val commentCount: Int,
     val type: StoryType,
+    /** The generated thumbnail, once there is one; the UI shows a placeholder until then. */
+    val thumbnail: Thumbnail? = null,
 ) {
     /** The story's discussion page on Hacker News. */
     val discussionUrl: String
@@ -24,4 +26,15 @@ enum class StoryType {
     STORY,
     JOB,
     POLL,
+}
+
+/** A generated story thumbnail on local storage. */
+data class Thumbnail(val filePath: String, val source: ThumbnailSource)
+
+enum class ThumbnailSource {
+    /** Abstract art painted on the device: shown first, always available. */
+    ON_DEVICE,
+
+    /** A text-to-image model's illustration, which replaces the on-device art when the quota allows. */
+    CLOUD,
 }

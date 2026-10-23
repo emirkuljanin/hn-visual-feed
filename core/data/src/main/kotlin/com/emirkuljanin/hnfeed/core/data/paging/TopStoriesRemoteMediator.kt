@@ -6,10 +6,11 @@ import androidx.paging.LoadType
 import androidx.paging.PagingState
 import androidx.paging.RemoteMediator
 import com.emirkuljanin.hnfeed.core.data.model.asStoryEntityOrNull
+import com.emirkuljanin.hnfeed.core.data.thumbnail.ThumbnailScheduler
 import com.emirkuljanin.hnfeed.core.database.DatabaseTransactionRunner
 import com.emirkuljanin.hnfeed.core.database.dao.StoryDao
 import com.emirkuljanin.hnfeed.core.database.dao.TopStoryDao
-import com.emirkuljanin.hnfeed.core.database.model.StoryEntity
+import com.emirkuljanin.hnfeed.core.database.model.FeedStoryEntity
 import com.emirkuljanin.hnfeed.core.network.HnNetworkDataSource
 import com.emirkuljanin.hnfeed.core.network.model.NetworkItem
 import java.io.IOException
@@ -36,7 +37,8 @@ internal val SNAPSHOT_MAX_AGE: Duration = Duration.ofMinutes(15)
  * - **PREPEND** never happens: the feed starts at rank 0.
  *
  * Every requested id is marked loaded, including ones that turned out missing, deleted or dead, so paging always
- * moves forward; cached rows for those are deleted so a killed story cannot resurface.
+ * moves forward; cached rows for those are deleted so a killed story cannot resurface. After each write, thumbnail
+ * generation is scheduled for the new stories.
  *
  * Failures become [MediatorResult.Error] (shown by the UI as a load state) rather than exceptions, which would
  * otherwise escape into Paging's scope and crash the app.
@@ -48,7 +50,8 @@ internal class TopStoriesRemoteMediator @Inject constructor(
     private val storyDao: StoryDao,
     private val transaction: DatabaseTransactionRunner,
     private val clock: Clock,
-) : RemoteMediator<Int, StoryEntity>() {
+    private val thumbnailScheduler: ThumbnailScheduler,
+) : RemoteMediator<Int, FeedStoryEntity>() {
 
     override suspend fun initialize(): InitializeAction {
         val refreshedAt = topStoryDao.snapshotLoadedAt() ?: return InitializeAction.LAUNCH_INITIAL_REFRESH
@@ -56,7 +59,7 @@ internal class TopStoriesRemoteMediator @Inject constructor(
         return if (isFresh) InitializeAction.SKIP_INITIAL_REFRESH else InitializeAction.LAUNCH_INITIAL_REFRESH
     }
 
-    override suspend fun load(loadType: LoadType, state: PagingState<Int, StoryEntity>): MediatorResult {
+    override suspend fun load(loadType: LoadType, state: PagingState<Int, FeedStoryEntity>): MediatorResult {
         val pageSize = state.config.pageSize
         return try {
             when (loadType) {
@@ -84,6 +87,7 @@ internal class TopStoriesRemoteMediator @Inject constructor(
             topStoryDao.replaceSnapshot(ranking)
             writePage(requestedIds = firstPage, items = items)
         }
+        thumbnailScheduler.schedule()
         return MediatorResult.Success(endOfPaginationReached = ranking.size <= pageSize)
     }
 
@@ -99,6 +103,7 @@ internal class TopStoriesRemoteMediator @Inject constructor(
                 writePage(requestedIds = pageIds, items = items)
             }
         }
+        thumbnailScheduler.schedule()
         return MediatorResult.Success(endOfPaginationReached = false)
     }
 

@@ -1,9 +1,8 @@
 package com.emirkuljanin.hnfeed.core.imagegen.di
 
 import com.emirkuljanin.hnfeed.core.imagegen.BuildConfig
-import com.emirkuljanin.hnfeed.core.imagegen.ChainedThumbnailGenerator
-import com.emirkuljanin.hnfeed.core.imagegen.ImageGenerator
 import com.emirkuljanin.hnfeed.core.imagegen.ThumbnailGenerator
+import com.emirkuljanin.hnfeed.core.imagegen.TieredThumbnailGenerator
 import com.emirkuljanin.hnfeed.core.imagegen.cloud.CloudflareConfig
 import com.emirkuljanin.hnfeed.core.imagegen.cloud.CloudflareHttpClient
 import com.emirkuljanin.hnfeed.core.imagegen.cloud.CloudflareImageGenerator
@@ -31,8 +30,7 @@ internal object ImageGenModule {
 
     /**
      * Separate from the HN API client, with timeouts sized for generation (FLUX schnell answers in about 2 s).
-     * Kept short because the cloud is tried first for every story: on a dead network the fallback to on-device art
-     * must not wait long.
+     * Kept short: upgrades run a few at a time in the background, and a hung call should not hold up the queue.
      */
     @Provides
     @Singleton
@@ -43,10 +41,10 @@ internal object ImageGenModule {
         .callTimeout(Duration.ofSeconds(30))
         .build()
 
-    /** Priority order: the first generator that may handle a title and succeeds wins; on-device never refuses. */
+    /** Previews are on-device; upgrades try the listed generators in priority order (cloud today). */
     @Provides
-    fun imageGenerators(cloud: CloudflareImageGenerator, onDevice: OnDeviceImageGenerator): List<ImageGenerator> =
-        listOf(cloud, onDevice)
+    fun thumbnailGenerator(onDevice: OnDeviceImageGenerator, cloud: CloudflareImageGenerator): ThumbnailGenerator =
+        TieredThumbnailGenerator(preview = onDevice, upgrades = listOf(cloud))
 }
 
 @Module
@@ -55,7 +53,4 @@ internal interface ImageGenBindingsModule {
 
     @Binds
     fun bindsTextEmbedder(impl: MediaPipeTextEmbedder): TextEmbedder
-
-    @Binds
-    fun bindsThumbnailGenerator(impl: ChainedThumbnailGenerator): ThumbnailGenerator
 }

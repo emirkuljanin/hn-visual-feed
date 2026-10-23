@@ -12,8 +12,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * The always-available generator: embeds the title on device and paints procedural art from the embedding.
- * Works offline, costs nothing, and cannot produce unsafe imagery, which is why it is the last resort for every
- * title and the only path for titles the safety filter keeps away from the cloud.
+ * Works offline, costs nothing, and cannot produce unsafe imagery, which is why every story gets its preview from
+ * it first, and titles the safety filter keeps away from the cloud keep it for good.
  */
 internal class OnDeviceImageGenerator @Inject constructor(
     private val embedder: TextEmbedder,
