@@ -80,7 +80,7 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 9. Move to GitHub with GitHub Actions CI: a public repository; checks on every PR and push to master (format, lint,
    JVM/Robolectric tests, screenshots, both builds), instrumented tests on an emulator, the release APK as an
    artifact and on tagged GitHub Releases. CI has no Cloudflare secrets (a public APK must not carry the token).
-   *In review.*
+   *Merged* (GitHub PR #1). Gitblit retired; all PRs on GitHub from here on.
 
 ## Environment
 
