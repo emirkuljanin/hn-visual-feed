@@ -1,90 +1,84 @@
 package com.emirkuljanin.hnfeed.core.imagegen
 
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.assertIs
 import kotlinx.coroutines.test.runTest
 
 class ThumbnailGeneratorTest {
 
     private val request = ImageRequest(storyId = 1, title = "A story")
+    private val onDevice = FakeGenerator(ImageSource.ON_DEVICE)
 
     @Test
-    fun usesTheFirstGeneratorThatMayHandleTheRequest() = runTest {
+    fun preview_comesFromTheOnDeviceGenerator_withoutTouchingUpgrades() = runTest {
         val cloud = FakeGenerator(ImageSource.CLOUD)
-        val onDevice = FakeGenerator(ImageSource.ON_DEVICE)
 
-        val image = ChainedThumbnailGenerator(listOf(cloud, onDevice)).generate(request)
-
-        assertEquals(ImageSource.CLOUD, image.source)
-        assertFalse(image.isFallback)
-        assertEquals(0, onDevice.calls)
-    }
-
-    @Test
-    fun skipsGeneratorsThatMayNotHandleTheRequest_withoutMarkingTheResultAsAFallback() = runTest {
-        val cloud = FakeGenerator(ImageSource.CLOUD, allowed = false) // e.g. an unsafe title
-
-        val image = ChainedThumbnailGenerator(listOf(cloud, FakeGenerator(ImageSource.ON_DEVICE))).generate(request)
+        val image = TieredThumbnailGenerator(onDevice, listOf(cloud)).generatePreview(request)
 
         assertEquals(ImageSource.ON_DEVICE, image.source)
-        assertFalse(image.isFallback, "On-device art is the intended result here, not a fallback")
         assertEquals(0, cloud.calls)
     }
 
     @Test
-    fun fallsBackToTheNextGenerator_whenOneFails_andMarksTheResult() = runTest {
-        val cloud = FakeGenerator(ImageSource.CLOUD, failure = IOException("HTTP 429"))
+    fun upgrade_returnsTheFirstAllowedGeneratorsImage() = runTest {
+        val outcome = TieredThumbnailGenerator(
+            onDevice,
+            listOf(FakeGenerator(ImageSource.CLOUD)),
+        ).generateUpgrade(request)
 
-        val image = ChainedThumbnailGenerator(listOf(cloud, FakeGenerator(ImageSource.ON_DEVICE))).generate(request)
-
-        assertEquals(ImageSource.ON_DEVICE, image.source)
-        assertTrue(image.isFallback)
-        assertEquals(1, cloud.calls)
+        assertEquals(ImageSource.CLOUD, assertIs<UpgradeOutcome.Upgraded>(outcome).image.source)
+        assertEquals(0, onDevice.calls)
     }
 
     @Test
-    fun doesNotMarkTheResultAsAFallback_whenThePreferredGeneratorRefusedForGood() = runTest {
-        val cloud = FakeGenerator(ImageSource.CLOUD, failure = PermanentGenerationException("HTTP 400: NSFW"))
+    fun upgrade_isNotApplicable_whenNoGeneratorMayHandleTheTitle() = runTest {
+        val cloud = FakeGenerator(ImageSource.CLOUD, allowed = false) // unsafe title, or no credentials
 
-        val image = ChainedThumbnailGenerator(listOf(cloud, FakeGenerator(ImageSource.ON_DEVICE))).generate(request)
+        val outcome = TieredThumbnailGenerator(onDevice, listOf(cloud)).generateUpgrade(request)
 
-        assertEquals(ImageSource.ON_DEVICE, image.source)
-        assertFalse(image.isFallback, "Retrying a moderation or auth rejection would only fail again")
+        assertEquals(UpgradeOutcome.NotApplicable, outcome)
+        assertEquals(0, cloud.calls)
     }
 
     @Test
-    fun failsWithTheLastError_whenEveryGeneratorFails() = runTest {
+    fun upgrade_mapsFailuresToOutcomes() = runTest {
+        suspend fun outcomeFor(failure: Exception) =
+            TieredThumbnailGenerator(onDevice, listOf(FakeGenerator(ImageSource.CLOUD, failure = failure)))
+                .generateUpgrade(request)
+
+        assertIs<UpgradeOutcome.QuotaExhausted>(outcomeFor(QuotaExceededException("HTTP 429")))
+        assertIs<UpgradeOutcome.Rejected>(outcomeFor(PermanentGenerationException("HTTP 400: NSFW")))
+        assertIs<UpgradeOutcome.RetryLater>(outcomeFor(IOException("HTTP 503")))
+        assertIs<UpgradeOutcome.RetryLater>(outcomeFor(SocketTimeoutException("timeout")))
+        assertIs<UpgradeOutcome.Unavailable>(outcomeFor(ProviderUnavailableException("HTTP 429: capacity")))
+        assertIs<UpgradeOutcome.Unavailable>(outcomeFor(UnknownHostException("api.cloudflare.com")))
+        assertIs<UpgradeOutcome.Unavailable>(outcomeFor(ConnectException("refused")))
+    }
+
+    @Test
+    fun upgrade_prefersTheMostHopefulOutcome_whenSeveralGeneratorsFail() = runTest {
         val generators = listOf(
             FakeGenerator(ImageSource.CLOUD, failure = IOException("offline")),
-            FakeGenerator(ImageSource.ON_DEVICE, failure = IOException("disk full")),
+            FakeGenerator(ImageSource.CLOUD, failure = PermanentGenerationException("rejected")),
         )
 
-        val error = assertFailsWith<IOException> { ChainedThumbnailGenerator(generators).generate(request) }
-
-        assertEquals("disk full", error.message)
+        assertIs<UpgradeOutcome.RetryLater>(TieredThumbnailGenerator(onDevice, generators).generateUpgrade(request))
     }
 
     @Test
-    fun failsWithAnIOException_whenNoGeneratorMayHandleTheRequest() = runTest {
-        val generators = listOf(FakeGenerator(ImageSource.CLOUD, allowed = false))
-
-        assertFailsWith<IOException> { ChainedThumbnailGenerator(generators).generate(request) }
-    }
-
-    @Test
-    fun doesNotSwallowCancellation() = runTest {
+    fun upgrade_doesNotSwallowCancellation() = runTest {
         val cancelled = FakeGenerator(ImageSource.CLOUD, failure = CancellationException("cancelled"))
-        val onDevice = FakeGenerator(ImageSource.ON_DEVICE)
 
         assertFailsWith<CancellationException> {
-            ChainedThumbnailGenerator(listOf(cancelled, onDevice)).generate(request)
+            TieredThumbnailGenerator(onDevice, listOf(cancelled)).generateUpgrade(request)
         }
-        assertEquals(0, onDevice.calls)
     }
 
     private class FakeGenerator(

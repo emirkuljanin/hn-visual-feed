@@ -10,6 +10,20 @@ android {
         applicationId = "com.emirkuljanin.hnfeed"
         versionCode = 1
         versionName = "0.1.0"
+        // MediaPipe ships native code for four ABIs; phones and the emulator images we target need only these two.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+
+    androidResources {
+        // Lets MediaPipe memory-map the text embedder model straight from the APK.
+        noCompress += "tflite"
+    }
+
+    packaging {
+        jniLibs {
+            // tasks-text also bundles the on-device LLM runtime (tens of MB), which the embedder does not use.
+            excludes += "**/libmediapipe_tasks_textgenai_jni.so"
+        }
     }
 
     buildTypes {
@@ -30,6 +44,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.hilt.work)
+    implementation(libs.androidx.work.runtime)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)

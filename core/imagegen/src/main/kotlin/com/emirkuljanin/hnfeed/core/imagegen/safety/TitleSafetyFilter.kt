@@ -9,7 +9,7 @@ import javax.inject.Inject
  *
  * This is one layer of a defence in depth, not a classifier: a short list of sexual, graphic-violence and self-harm
  * terms, matched after normalising case, accents and digit-for-letter substitutions. Behind it, the prompt asks for
- * abstract shapes, and Cloudflare screens prompts itself (rejected ones also fall back to on-device art). The list
+ * abstract shapes, and Cloudflare screens prompts itself (rejected ones keep their on-device preview). The list
  * is deliberately small and will miss things; it does not try to cover hate speech or every phrasing. It avoids
  * words with common harmless uses ("Al Gore", "naked functions", "torturous", "sexuality") and matches whole words
  * only ("Sussex", "nudge" pass). A false positive only costs a cloud image: the title still gets on-device art.

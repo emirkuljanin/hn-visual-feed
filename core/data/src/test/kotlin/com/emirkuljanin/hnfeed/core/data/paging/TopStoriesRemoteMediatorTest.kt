@@ -8,10 +8,11 @@ import androidx.paging.PagingState
 import androidx.paging.RemoteMediator.InitializeAction
 import androidx.paging.RemoteMediator.MediatorResult
 import com.emirkuljanin.hnfeed.core.data.testing.FakeHnNetworkDataSource
+import com.emirkuljanin.hnfeed.core.data.testing.FakeThumbnailScheduler
 import com.emirkuljanin.hnfeed.core.data.testing.InMemoryDatabaseTest
 import com.emirkuljanin.hnfeed.core.data.testing.networkStory
 import com.emirkuljanin.hnfeed.core.database.DatabaseTransactionRunner
-import com.emirkuljanin.hnfeed.core.database.model.StoryEntity
+import com.emirkuljanin.hnfeed.core.database.model.FeedStoryEntity
 import java.io.IOException
 import java.time.Clock
 import kotlin.test.Test
@@ -25,10 +26,11 @@ import kotlinx.coroutines.test.runTest
 internal class TopStoriesRemoteMediatorTest : InMemoryDatabaseTest() {
 
     private val network = FakeHnNetworkDataSource()
+    private val thumbnailScheduler = FakeThumbnailScheduler()
     private val mediator by lazy { mediator() }
 
     private fun mediator(clock: Clock = this.clock, transaction: DatabaseTransactionRunner = this.transaction) =
-        TopStoriesRemoteMediator(network, topStoryDao, storyDao, transaction, clock)
+        TopStoriesRemoteMediator(network, topStoryDao, storyDao, transaction, clock, thumbnailScheduler)
 
     @Test
     fun initialize_withNothingCached_launchesARefresh() = runTest {
@@ -224,6 +226,18 @@ internal class TopStoriesRemoteMediatorTest : InMemoryDatabaseTest() {
     }
 
     @Test
+    fun refreshAndAppend_scheduleThumbnailsForTheNewStories() = runTest {
+        network.ranking = listOf(1, 2, 3, 4)
+        network.addStories(1, 2, 3, 4)
+
+        mediator.load(LoadType.REFRESH, state(pageSize = 2))
+        assertEquals(1, thumbnailScheduler.scheduled)
+        mediator.load(LoadType.APPEND, state(pageSize = 2))
+
+        assertEquals(2, thumbnailScheduler.scheduled)
+    }
+
+    @Test
     fun prepend_isAlwaysTheEndOfPagination() = runTest {
         val result = mediator.load(LoadType.PREPEND, state(pageSize = 2))
 
@@ -231,7 +245,7 @@ internal class TopStoriesRemoteMediatorTest : InMemoryDatabaseTest() {
         assertTrue(network.itemRequests.isEmpty())
     }
 
-    private fun state(pageSize: Int) = PagingState<Int, StoryEntity>(
+    private fun state(pageSize: Int) = PagingState<Int, FeedStoryEntity>(
         pages = emptyList(),
         anchorPosition = null,
         config = PagingConfig(pageSize = pageSize),

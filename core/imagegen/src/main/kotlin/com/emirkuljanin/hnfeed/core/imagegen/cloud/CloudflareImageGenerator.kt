@@ -7,6 +7,8 @@ import com.emirkuljanin.hnfeed.core.imagegen.ImageGenerator
 import com.emirkuljanin.hnfeed.core.imagegen.ImageRequest
 import com.emirkuljanin.hnfeed.core.imagegen.ImageSource
 import com.emirkuljanin.hnfeed.core.imagegen.PermanentGenerationException
+import com.emirkuljanin.hnfeed.core.imagegen.ProviderUnavailableException
+import com.emirkuljanin.hnfeed.core.imagegen.QuotaExceededException
 import com.emirkuljanin.hnfeed.core.imagegen.encode.ThumbnailEncoder
 import com.emirkuljanin.hnfeed.core.imagegen.safety.TitleSafetyFilter
 import java.io.IOException
@@ -26,7 +28,7 @@ import okhttp3.coroutines.executeAsync
 /**
  * Text-to-image in the cloud: FLUX.1 [schnell] on Cloudflare Workers AI. Only used when credentials are configured
  * and the title passes the safety filter. Cloudflare also screens prompts itself and answers HTTP 400 ("Input
- * prompt contains NSFW content") for ones it rejects; like any failure, that falls back to the on-device image.
+ * prompt contains NSFW content") for ones it rejects, reported as permanent: the story keeps its on-device image.
  * The model accepts no seed, so regenerating a story gives a different (equally valid) picture.
  *
  * Only the HTTP exchange runs on the IO dispatcher; parsing the ~200 KB response, base64 and image work run on the
@@ -66,13 +68,17 @@ internal class CloudflareImageGenerator @Inject constructor(
         val (code, responseBody) = call.executeAsync().use { response -> response.code to response.body.string() }
         if (code !in 200..299) {
             // Error bodies use the same envelope; their messages (auth, quota, moderation) are worth keeping.
-            val reason = parseOrNull(responseBody)?.errors?.joinToString { it.message }?.takeIf { it.isNotBlank() }
+            val errors = parseOrNull(responseBody)?.errors.orEmpty()
+            val reason = errors.joinToString { it.message }.takeIf { it.isNotBlank() }
             val message = "Cloudflare returned HTTP $code" + reason?.let { ": $it" }.orEmpty()
-            // 4xx (moderation, auth, bad input) repeats on retry; 408/429 and 5xx may not.
-            throw if (code in 400..499 && code != 408 && code != 429) {
-                PermanentGenerationException(message)
-            } else {
-                IOException(message)
+            // 429 is either the daily free allocation (3036) or "capacity temporarily exceeded" (3040); 502-504 mean
+            // the service is down for everyone. Other 4xx (moderation, auth, bad input) repeat on retry; 408 and
+            // 500 may not, and may be about this request.
+            throw when {
+                code == 429 && errors.any { it.isDailyLimit() } -> QuotaExceededException(message)
+                code == 429 || code in 502..504 -> ProviderUnavailableException(message)
+                code in 400..499 && code != 408 -> PermanentGenerationException(message)
+                else -> IOException(message)
             }
         }
         responseBody
@@ -112,10 +118,16 @@ internal class CloudflareImageGenerator @Inject constructor(
     private data class FluxResult(val image: String? = null)
 
     @Serializable
-    private data class CloudflareError(val message: String = "")
+    private data class CloudflareError(val code: Int = 0, val message: String = "") {
+        /** By code, or by message in case an error arrives without the documented code. */
+        fun isDailyLimit() = code == ACCOUNT_LIMITED || message.contains("daily free allocation", ignoreCase = true)
+    }
 
     private companion object {
         const val MODEL = "@cf/black-forest-labs/flux-1-schnell"
+
+        /** "You have used up your daily free allocation" (developers.cloudflare.com/workers-ai/platform/errors). */
+        const val ACCOUNT_LIMITED = 3036
 
         /** The model's default; its maximum is 8. Each step costs extra neurons for little gain at thumbnail size. */
         const val STEPS = 4

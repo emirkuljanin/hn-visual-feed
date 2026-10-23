@@ -8,6 +8,7 @@ import com.emirkuljanin.hnfeed.core.database.DatabaseTransactionRunner
 import com.emirkuljanin.hnfeed.core.database.HnDatabase
 import com.emirkuljanin.hnfeed.core.database.RoomDatabaseTransactionRunner
 import com.emirkuljanin.hnfeed.core.database.dao.StoryDao
+import com.emirkuljanin.hnfeed.core.database.dao.ThumbnailDao
 import com.emirkuljanin.hnfeed.core.database.dao.TopStoryDao
 import dagger.Binds
 import dagger.Module
@@ -39,6 +40,9 @@ internal object DatabaseModule {
 
     @Provides
     fun topStoryDao(database: HnDatabase): TopStoryDao = database.topStoryDao()
+
+    @Provides
+    fun thumbnailDao(database: HnDatabase): ThumbnailDao = database.thumbnailDao()
 }
 
 @Module
