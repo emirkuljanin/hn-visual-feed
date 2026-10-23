@@ -23,6 +23,10 @@ internal fun Project.configureKotlinAndroid(commonExtension: CommonExtension) {
         defaultConfig.minSdk = libs.versionInt("minSdk")
         compileOptions.sourceCompatibility = JAVA_VERSION
         compileOptions.targetCompatibility = JAVA_VERSION
+        // "No lint issues" is a rule here, so warnings fail the build, locally and in CI. Version-freshness checks
+        // need the network and change without a code change; Dependabot covers versions instead.
+        lint.warningsAsErrors = true
+        lint.disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "NewerVersionAvailable")
     }
 
     // AGP 9 compiles Kotlin itself (built-in Kotlin), so there is no kotlin-android plugin to apply.

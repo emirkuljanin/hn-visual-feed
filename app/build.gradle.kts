@@ -10,8 +10,9 @@ android {
 
     defaultConfig {
         applicationId = "com.emirkuljanin.hnfeed"
-        versionCode = 1
-        versionName = "0.1.0"
+        // The release workflow passes the tag (v1.2.0 -> 1.2.0) and its run number; local and CI builds use the defaults.
+        versionCode = providers.gradleProperty("versionCode").map(String::toInt).getOrElse(1)
+        versionName = providers.gradleProperty("versionName").getOrElse("0.1.0-dev")
         // MediaPipe ships native code for four ABIs; phones and the emulator images we target need only these two.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -33,7 +34,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug-signed so reviewers can install a release build without a keystore.
+            // Debug-signed so reviewers can install a release build without a keystore. Each machine (and each CI
+            // runner) has its own debug key, so a build from elsewhere installs only after uninstalling this one.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -29,6 +30,7 @@ class FeedViewModelTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class) // UnconfinedTestDispatcher
     fun uiState_followsTheConnection() = runTest {
         val viewModel = FeedViewModel(FakeTopStoriesRepository(testStories), networkMonitor)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }

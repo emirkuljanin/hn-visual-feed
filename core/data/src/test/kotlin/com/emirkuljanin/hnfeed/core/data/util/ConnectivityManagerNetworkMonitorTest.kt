@@ -7,6 +7,7 @@ import app.cash.turbine.test
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.runner.RunWith
@@ -22,6 +23,7 @@ class ConnectivityManagerNetworkMonitorTest {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class) // UnconfinedTestDispatcher
     fun isOffline_onlyWhenNoNetworkIsLeft_andStopsListeningWhenNotCollected() = runTest {
         // Start offline: the active network has no internet capability.
         shadowOf(connectivityManager).setNetworkCapabilities(
