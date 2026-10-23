@@ -19,11 +19,12 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
 
 1. Format: `./gradlew spotlessApply` then `./gradlew spotlessCheck` (ktlint + Compose rules, see `.editorconfig`).
 2. Compile: `./gradlew assembleDebug`. Run `assembleRelease` too when touching R8, serialization, Hilt or reflection.
-3. Unit tests: `./gradlew testDebugUnitTest` (includes Robolectric/Roborazzi screenshot tests once they exist).
-   - Screenshot baselines: `./gradlew recordRoborazziDebug` to (re)record, `verifyRoborazziDebug` to compare.
-     Only re-record when the UI change is intended, and say so in the PR.
-4. Lint: `./gradlew lintDebug`. Must end with "No issues found" in `app/build/reports/lint-results-debug.txt`.
-5. UI tests on the emulator: `./gradlew connectedDebugAndroidTest`.
+3. Unit tests: `./gradlew testDebugUnitTest`. It runs the screenshot tests too but does not compare images.
+4. Screenshots: `./gradlew verifyRoborazziDebug` compares against `*/src/test/screenshots` (this is the check that
+   catches visual regressions). `recordRoborazziDebug` re-records; only when the UI change is intended, and say
+   so in the PR. Look at changed PNGs before committing them.
+5. Lint: `./gradlew lintDebug`. Must end with "No issues found" in `app/build/reports/lint-results-debug.txt`.
+6. UI tests on the emulator: `./gradlew connectedDebugAndroidTest`.
 
 Redirect long output to a file in `$TEMP` and grep it (`^e:|^w:|FAIL|BUILD`), rather than dumping it all.
 Treat new Kotlin warnings (`^w:`) as things to fix; CI builds with `-PwarningsAsErrors=true`.

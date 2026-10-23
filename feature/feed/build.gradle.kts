@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.hnfeed.android.feature)
+    alias(libs.plugins.hnfeed.android.roborazzi)
 }
 
 android {

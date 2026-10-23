@@ -1,0 +1,59 @@
+package com.emirkuljanin.hnfeed.feature.feed
+
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onRoot
+import com.emirkuljanin.hnfeed.core.testing.data.testStories
+import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Golden images of every feed state, in `src/test/screenshots`. `./gradlew verifyRoborazziDebug` fails on any pixel
+ * change; re-record with `./gradlew recordRoborazziDebug` only when the change is intended.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = RobolectricDeviceQualifiers.MediumPhone)
+class FeedScreenScreenshotTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun feed_light() = capture("feed_light") { FeedTestContent(feed(stories = testStories)) }
+
+    @Test
+    fun feed_dark() = capture("feed_dark") { FeedTestContent(feed(stories = testStories), darkTheme = true) }
+
+    @Test
+    fun feed_jobAndPoll() = capture("feed_job_and_poll") { FeedTestContent(feed(stories = testStories.drop(2))) }
+
+    @Test
+    fun feed_refreshFailed() = capture("feed_refresh_failed") {
+        FeedTestContent(feed(stories = testStories, refresh = error))
+    }
+
+    @Test
+    fun feed_appendFailed() = capture("feed_append_failed") {
+        FeedTestContent(feed(stories = testStories.takeLast(1), append = error))
+    }
+
+    @Test
+    fun firstLoad() = capture("first_load") { FeedTestContent(feed(refresh = loading)) }
+
+    @Test
+    fun firstLoadFailed() = capture("first_load_failed") { FeedTestContent(feed(refresh = error)) }
+
+    @Test
+    fun empty() = capture("empty") { FeedTestContent(feed()) }
+
+    private fun capture(name: String, content: @androidx.compose.runtime.Composable () -> Unit) {
+        composeRule.setContent(content)
+        composeRule.onRoot().captureRoboImage("src/test/screenshots/$name.png")
+    }
+}

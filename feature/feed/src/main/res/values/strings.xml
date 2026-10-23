@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feature_feed_title">Hacker News</string>
-    <!-- e.g. "120 points by pg · 45 comments" -->
-    <string name="feature_feed_story_meta">%1$s by %2$s · %3$s</string>
+
+    <!-- Story card -->
+    <!-- e.g. "by pg · 3 hours ago" -->
+    <string name="feature_feed_byline">by %1$s · %2$s</string>
+    <!-- e.g. "120 points · 45 comments" -->
+    <string name="feature_feed_counts">%1$s · %2$s</string>
     <plurals name="feature_feed_points">
         <item quantity="one">%d point</item>
         <item quantity="other">%d points</item>
@@ -11,4 +15,18 @@
         <item quantity="one">%d comment</item>
         <item quantity="other">%d comments</item>
     </plurals>
+    <string name="feature_feed_type_job">Job</string>
+    <string name="feature_feed_type_poll">Poll</string>
+    <string name="feature_feed_open_story">Open story</string>
+
+    <!-- Load states -->
+    <string name="feature_feed_loading">Loading stories</string>
+    <string name="feature_feed_error_title">Couldn\'t load stories</string>
+    <string name="feature_feed_error_message">Check your connection and try again.</string>
+    <string name="feature_feed_refresh_failed">Couldn\'t refresh. Showing saved stories.</string>
+    <string name="feature_feed_append_failed">Couldn\'t load more stories.</string>
+    <string name="feature_feed_empty_title">No stories right now</string>
+    <string name="feature_feed_empty_message">Tap refresh to check again.</string>
+    <string name="feature_feed_retry">Retry</string>
+    <string name="feature_feed_refresh">Refresh</string>
 </resources>

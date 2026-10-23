@@ -54,6 +54,14 @@ class NetworkItemMapperTest {
     }
 
     @Test
+    fun dropsLinksThatAreNotWebUrls() {
+        listOf("javascript:alert(1)", "intent://scan/#Intent;end", "ftp://example.com", "example.com").forEach {
+            assertNull(story.copy(url = it).asStoryEntityOrNull(fetchedAt)?.url, "Expected $it to be dropped")
+        }
+        assertEquals("HTTP://EXAMPLE.COM", story.copy(url = "HTTP://EXAMPLE.COM").asStoryEntityOrNull(fetchedAt)?.url)
+    }
+
+    @Test
     fun rejectsItemsThatDoNotBelongInTheFeed() {
         val rejected = listOf(
             story.copy(deleted = true),

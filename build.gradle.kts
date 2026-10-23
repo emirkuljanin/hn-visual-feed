@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.room) apply false
+    alias(libs.plugins.roborazzi) apply false
     alias(libs.plugins.spotless)
 }
 
@@ -17,11 +18,16 @@ spotless {
     kotlin {
         target("**/*.kt")
         targetExclude("**/build/**")
-        ktlint(ktlintVersion).customRuleSets(listOf(composeRules))
+        ktlint(ktlintVersion)
+            .setEditorConfigPath(rootProject.file(".editorconfig"))
+            .customRuleSets(listOf(composeRules))
+            // LocalClock is environment data like LocalConfiguration: every time label reads it, tests override it.
+            // (Set here because Spotless does not pass custom rule-set properties through from .editorconfig.)
+            .editorConfigOverride(mapOf("compose_allowed_composition_locals" to "LocalClock"))
     }
     kotlinGradle {
         target("**/*.kts")
         targetExclude("**/build/**")
-        ktlint(ktlintVersion)
+        ktlint(ktlintVersion).setEditorConfigPath(rootProject.file(".editorconfig"))
     }
 }
