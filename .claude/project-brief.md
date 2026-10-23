@@ -21,11 +21,15 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 
 ## Agreed decisions
 
-- **Image generation**: `ImageGenerator` interface. Cloud text-to-image (free no-key provider, e.g.
-  Pollinations; verify) is primary. On-device fallback: a small MediaPipe text embedder bundled in the APK turns
-  the title into a vector that drives procedural art. No mandatory model download (opt-in diffusion: PR 8).
-- **Safety**: SFW filter on titles (blocklist + safe prompt template, provider safe mode). Flagged titles go to
-  the on-device generator, which cannot produce unsafe imagery.
+- **Image generation**: a chain of generators behind the public `ThumbnailGenerator` interface. Cloud first:
+  FLUX.1 [schnell] on Cloudflare Workers AI (free 10k neurons/day, about 170 images), with credentials from
+  `local.properties`/env (optional; without them everything is on-device). Pollinations was the original plan, but
+  its anonymous API answers 402 Payment Required for new prompts since Oct 2026. On-device last: MediaPipe
+  Universal Sentence Encoder (6 MB, committed) embeds the title, procedural art is painted from the embedding.
+  A result is marked `isFallback` when the cloud was allowed but failed, so 5b can retry it later. No mandatory
+  model download (opt-in diffusion: PR 8).
+- **Safety**: title blocklist (words, stems, phrases) plus an abstract "visual metaphor" prompt; Cloudflare also
+  screens prompts (HTTP 400, falls back). Flagged titles go to the on-device generator, which cannot depict anything.
 - **Pagination**: Paging 3 `RemoteMediator`, automatic loading. REFRESH fetches the ~500 top IDs once and stores
   a snapshot table `(rank, storyId)`; APPEND slices the stored snapshot and fetches item details in parallel.
   PagingSource = Room join of snapshot + story + thumbnail ordered by rank.
@@ -49,8 +53,12 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 2. Network + database + models (MockWebServer, in-memory Room tests). *Merged.*
 3. Paging: RemoteMediator, repository, snapshot logic (tests), minimal list wired into the app. *Merged.*
 4. Feed UI: cards with placeholders, pull-to-refresh, load/error/empty states with retry, scroll to top after a
-   refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *In review.*
-5. Image generation: interface, cloud + on-device generators, safety filter, WorkManager, file storage, cleanup.
+   refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *Merged.*
+5. Image generation, split in two:
+   - 5a. `:core:imagegen`: generator chain, Cloudflare + on-device generators, safety filter. *In review.*
+   - 5b. Pipeline: `thumbnails` table (first Room migration), WorkManager job, file storage and cleanup, cards show
+     images, retry of `isFallback` rows, app wiring (exclude MediaPipe's unused textgenai `.so`, ABI filters, R8
+     check of the embedder in a release build).
 6. Story detail + comments (adjacency list in Room, lazy expansion).
 7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check

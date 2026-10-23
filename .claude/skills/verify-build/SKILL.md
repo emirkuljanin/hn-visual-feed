@@ -24,7 +24,10 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
    catches visual regressions). `recordRoborazziDebug` re-records; only when the UI change is intended, and say
    so in the PR. Look at changed PNGs before committing them.
 5. Lint: `./gradlew lintDebug`. Must end with "No issues found" in `app/build/reports/lint-results-debug.txt`.
-6. UI tests on the emulator: `./gradlew connectedDebugAndroidTest`.
+6. UI tests on the emulator: `./gradlew connectedDebugAndroidTest`. Add
+   `-Pandroid.testInstrumentationRunnerArguments.liveCloudflare=true` to include the one real Cloudflare call
+   (costs quota). Skipped instrumented tests (JUnit assumptions) show up as `<failure>` entries with an
+   `AssumptionViolatedException` in AGP's XML report although the task passes: check the message, not the count.
 
 Redirect long output to a file in `$TEMP` and grep it (`^e:|^w:|FAIL|BUILD`), rather than dumping it all.
 Treat new Kotlin warnings (`^w:`) as things to fix; CI builds with `-PwarningsAsErrors=true`.

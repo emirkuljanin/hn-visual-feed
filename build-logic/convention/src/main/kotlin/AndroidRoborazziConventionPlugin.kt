@@ -31,14 +31,20 @@ class AndroidRoborazziConventionPlugin : Plugin<Project> {
             }
 
             dependencies {
-                add("testImplementation", libs.library("androidx-compose-ui-test-junit4"))
                 add("testImplementation", libs.library("androidx-test-core"))
-                // Compose UI test pulls an old Espresso (3.5) that fails on the API 36 runtime; use the current one.
-                add("testImplementation", libs.library("androidx-test-espresso-core"))
                 add("testImplementation", libs.library("robolectric"))
                 add("testImplementation", libs.library("roborazzi"))
-                add("testImplementation", libs.library("roborazzi-compose"))
-                add("debugImplementation", libs.library("androidx-compose-ui-test-manifest"))
+            }
+
+            // Compose screenshot and UI tests, only for modules that use Compose (others capture plain bitmaps).
+            pluginManager.withPlugin("org.jetbrains.kotlin.plugin.compose") {
+                dependencies {
+                    add("testImplementation", libs.library("androidx-compose-ui-test-junit4"))
+                    // Compose UI test pulls an old Espresso (3.5) that fails on the API 36 runtime; use the current one.
+                    add("testImplementation", libs.library("androidx-test-espresso-core"))
+                    add("testImplementation", libs.library("roborazzi-compose"))
+                    add("debugImplementation", libs.library("androidx-compose-ui-test-manifest"))
+                }
             }
         }
     }
