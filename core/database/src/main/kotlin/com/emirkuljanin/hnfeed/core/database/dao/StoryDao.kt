@@ -9,6 +9,7 @@ import androidx.room3.paging.PagingSourceDaoReturnTypeConverter
 import com.emirkuljanin.hnfeed.core.database.model.FeedStoryEntity
 import com.emirkuljanin.hnfeed.core.database.model.StoryEntity
 import java.time.Instant
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 @DaoReturnTypeConverters(PagingSourceDaoReturnTypeConverter::class)
@@ -58,4 +59,15 @@ interface StoryDao {
         """,
     )
     fun topStoriesPagingSource(): PagingSource<Int, FeedStoryEntity>
+
+    /** One story with its thumbnail, for the detail screen; `null` until it is cached. */
+    @Query(
+        """
+        SELECT stories.*, thumbnails.file_name AS thumbnail_file, thumbnails.source AS thumbnail_source
+        FROM stories
+        LEFT JOIN thumbnails ON thumbnails.story_id = stories.id
+        WHERE stories.id = :id
+        """,
+    )
+    fun observeStory(id: Long): Flow<FeedStoryEntity?>
 }

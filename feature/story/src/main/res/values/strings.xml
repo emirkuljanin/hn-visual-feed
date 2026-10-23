@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Top bar -->
+    <string name="feature_story_back">Back</string>
+    <string name="feature_story_open_on_hn">Open on Hacker News</string>
+
+    <!-- Story -->
+    <string name="feature_story_read_article">Read article</string>
+    <string name="feature_story_loading">Loading story</string>
+    <string name="feature_story_error_title">Couldn\'t load this story</string>
+    <string name="feature_story_error_message">Check your connection and try again.</string>
+    <string name="feature_story_refresh_failed">Couldn\'t refresh. Showing saved comments.</string>
+
+    <!-- Comments -->
+    <string name="feature_story_comments_title">Comments</string>
+    <string name="feature_story_no_comments">No comments yet</string>
+    <string name="feature_story_comments_unavailable">Comments couldn\'t be loaded.</string>
+    <string name="feature_story_loading_comments">Loading comments</string>
+    <!-- Badge next to comments by the story's author ("original poster"). -->
+    <string name="feature_story_original_poster">OP</string>
+    <string name="feature_story_original_poster_description">Story author</string>
+    <string name="feature_story_deleted">[deleted]</string>
+    <string name="feature_story_flagged">[flagged]</string>
+    <plurals name="feature_story_show_replies">
+        <item quantity="one">Show %d reply</item>
+        <item quantity="other">Show %d replies</item>
+    </plurals>
+    <string name="feature_story_hide_replies">Hide replies</string>
+    <plurals name="feature_story_more_replies">
+        <item quantity="one">Show %d more reply</item>
+        <item quantity="other">Show %d more replies</item>
+    </plurals>
+    <plurals name="feature_story_more_comments">
+        <item quantity="one">Load %d more comment</item>
+        <item quantity="other">Load %d more comments</item>
+    </plurals>
+    <string name="feature_story_replies_failed">Couldn\'t load replies.</string>
+    <string name="feature_story_comments_failed">Couldn\'t load more comments.</string>
+</resources>

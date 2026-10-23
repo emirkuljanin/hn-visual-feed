@@ -22,6 +22,8 @@ data class StoryEntity(
     @ColumnInfo(name = "comment_count") val commentCount: Int,
     val type: StoryType,
     @ColumnInfo(name = "fetched_at") val fetchedAt: Instant,
+    /** The body of text posts, as HTML. */
+    val text: String? = null,
 )
 
 fun StoryEntity.asExternalModel() = Story(
@@ -33,4 +35,5 @@ fun StoryEntity.asExternalModel() = Story(
     url = url,
     commentCount = commentCount,
     type = type,
+    text = text,
 )

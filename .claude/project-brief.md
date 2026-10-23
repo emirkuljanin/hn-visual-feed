@@ -43,10 +43,11 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   counted) or at a per-story transient error (backoff, give up after 3); cards observe Room and swap
   placeholder → preview → cloud image.
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
-  Room 3 (platform SQLite driver), Paging 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
+  Room 3 (platform SQLite driver), Paging 3, Navigation 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
   stable versions.
 - **Modules**: `:app`, `:core:common` (dispatchers), `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
-  `:core:designsystem`, `:core:testing`, `:feature:feed`, `:feature:story`, `build-logic` convention plugins.
+  `:core:designsystem`, `:core:ui` (shared model-aware composables, PR 6), `:core:testing`, `:feature:feed`,
+  `:feature:story`, `build-logic` convention plugins.
   A module is added by the PR that first needs it.
 - **Process**: one PR (Gitblit ticket) per task. Before a ticket is opened, the `pr-reviewer` agent reviews the
   diff and its findings are fixed or answered. The user then reviews and merges each PR before the next starts.
@@ -59,12 +60,13 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 3. Paging: RemoteMediator, repository, snapshot logic (tests), minimal list wired into the app. *Merged.*
 4. Feed UI: cards with placeholders, pull-to-refresh, load/error/empty states with retry, scroll to top after a
    refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *Merged.*
-5. Image generation, split in two:
+5. Image generation, split in two (both merged):
    - 5a. `:core:imagegen`: generator chain, Cloudflare + on-device generators, safety filter. *Merged.*
    - 5b. Pipeline: `thumbnails` table (first Room migration), WorkManager job, file storage and cleanup, cards show
      images, two-tier preview/upgrade with a quota pause, app wiring (exclude MediaPipe's unused textgenai `.so`,
-     ABI filters, R8 check of the embedder in a release build). *In review.*
-6. Story detail + comments (adjacency list in Room, lazy expansion).
+     ABI filters, R8 check of the embedder in a release build). *Merged.*
+6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
+   `:app`, shared composables moved to `:core:ui`). *In review.*
 7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check
    (RAM, arm64, SoC, free storage, Vulkan, thermal) and a one-step benchmark, Wi-Fi/charging-only model download,

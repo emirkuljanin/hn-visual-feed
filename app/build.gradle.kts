@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.hnfeed.android.application.compose)
     alias(libs.plugins.hnfeed.android.hilt)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -40,11 +41,15 @@ android {
 dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.feature.feed)
+    implementation(projects.feature.story)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.hilt.work)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.work.runtime)
 
     androidTestImplementation(libs.androidx.test.ext.junit)

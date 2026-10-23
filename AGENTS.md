@@ -31,13 +31,17 @@ Module dependency direction (arrows = "may depend on"); a module is added by the
 
 ```
 :app ──> :feature:* ──> :core:data ──> :core:network, :core:database, :core:imagegen ──> :core:model
-             └────────> :core:designsystem
+             └────────> :core:ui ──> :core:designsystem
 ```
 
 Any Android module may depend on `:core:common` (injectable dispatchers, `Clock` and other small utilities).
 `:core:imagegen` exposes only `ThumbnailGenerator` (an interface) and its request/result types; generators are internal.
+`:core:ui` holds composables several features share that know the model (thumbnail, story metadata, load states,
+`PreviewTheme`); `:core:designsystem` stays model-free. Features get both through `hnfeed.android.feature`.
 `:core:testing` (shared fakes, test data, `MainDispatcherRule`) is only ever a test dependency; feature modules get
 it automatically through `hnfeed.android.feature`.
+- **Navigation** (Navigation 3) lives in `:app` (`navigation/HnFeedNavDisplay.kt`): keys and the entry provider.
+  Features never navigate themselves; their `XxxRoute` reports clicks through callbacks (ids, not models).
 
 - `:core:model` is pure Kotlin (no Android). Network DTOs and Room entities stay inside their modules and are
   mapped to model types at the boundary; they never leak into features.
@@ -64,7 +68,9 @@ it automatically through `hnfeed.android.feature`.
   KSP only, never kapt. AGP 9 built-in Kotlin: do not apply `org.jetbrains.kotlin.android`.
 - Compose: a `XxxRoute` composable gets the ViewModel (`hiltViewModel()`) and collects state with
   `collectAsStateWithLifecycle()`; it passes plain state and lambdas to a stateless `XxxScreen`. Every screen
-  has `@Preview`s with a fixed clock and `dynamicColor = false`. Strings go in resources, quantities as plurals.
+  has `@Preview`s in `PreviewTheme` (fixed clock, `dynamicColor = false`, drawn thumbnails); tests use it too.
+  Strings go in resources, quantities as plurals. A ViewModel that needs a navigation argument takes it by
+  assisted injection (`hiltViewModel<VM, VM.Factory>(creationCallback = …)`).
 - Compose stability: [`compose-stability.conf`](compose-stability.conf) marks `java.time.Instant` and
   `core.model.*` (direct package only, not subpackages) as stable. That is a promise: model classes must stay
   deeply immutable (`val`s of immutable types; collections as `List` that is never mutated after creation).
