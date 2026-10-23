@@ -1,6 +1,6 @@
 ---
 name: pr-reviewer
-description: Independent pre-ticket reviewer for HN Visual Feed PRs. Reviews the branch diff against master for bugs, threading, architecture drift, outdated APIs and missing tests, and reports ranked findings. Read-only.
+description: Independent pre-PR reviewer for HN Visual Feed PRs. Reviews the branch diff against master for bugs, threading, architecture drift, outdated APIs and missing tests, and reports ranked findings. Read-only.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 ---
 

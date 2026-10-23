@@ -22,6 +22,8 @@ Use a JDK 17+ to launch Gradle (on the author's Windows machine:
 | UI tests (emulator) | `./gradlew connectedDebugAndroidTest` |
 
 Never run `clean` to "fix" a build; find the cause. The `verify-build` skill has the full procedure.
+GitHub Actions (`.github/workflows/ci.yml`) runs the same checks with `-PwarningsAsErrors=true` and fails on any
+lint issue; keep the two in sync. CI has no secrets: never add the Cloudflare token to a workflow.
 
 ## Architecture
 
@@ -87,8 +89,9 @@ it automatically through `hnfeed.android.feature`.
 
 ## Workflow
 
-- One PR (a Gitblit ticket) per planned task, reviewed and merged by the user before the next one starts.
-- Before opening a ticket: run `verify-build`, then have the `pr-reviewer` agent review the branch and handle its
+- One GitHub PR per planned task, reviewed and merged by the user before the next one starts; CI must be green.
+  (PRs 1-8 were reviewed as tickets on a local Gitblit server, hence their "Merged #n" commits by `admin`.)
+- Before opening a PR: run `verify-build`, then have the `pr-reviewer` agent review the branch and handle its
   findings. Details in the `open-pr` skill.
 - Skills live in `.claude/skills/`: project workflows (`verify-build`, `open-pr`), official Android skills
   (see `THIRD_PARTY.md`), and feature skills added by the PR that builds the feature.

@@ -1,0 +1,19 @@
+# Keeps the pinned action SHAs and the version catalog on the latest releases (the project's "latest stable"
+# rule). Grouped weekly so updates arrive as one reviewable PR per ecosystem, each checked by CI.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gradle:
+        patterns: ["*"]

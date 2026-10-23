@@ -49,10 +49,11 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   `:core:designsystem`, `:core:ui` (shared model-aware composables, PR 6), `:core:testing`, `:feature:feed`,
   `:feature:story`, `build-logic` convention plugins.
   A module is added by the PR that first needs it.
-- **Process**: one PR (Gitblit ticket) per task. Before a ticket is opened, the `pr-reviewer` agent reviews the
+- **Process**: one PR per task (PRs 1-8 as tickets on a local Gitblit server, then GitHub). Before a PR is
+  opened, the `pr-reviewer` agent reviews the
   diff and its findings are fixed or answered. The user then reviews and merges each PR before the next starts.
-  Finally (PR 9) the repo moves to GitHub with GitHub Actions CI; until then everything is reviewed and fine-tuned
-  on Gitblit.
+  PR 9 moved the repo to GitHub (user decision 2026-10-23): PRs, reviews and GitHub Actions CI happen there from
+  now on, and Gitblit is retired.
 
 ## PR plan
 
@@ -75,9 +76,11 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
    call), a MediaPipe version clash and a native-runtime clash, then produced only noise; the community SD 1.5
    conversion was proven byte-identical to the official weights, which points to the GPU engine/driver. The remaining path
    (stable-diffusion.cpp on CPU with SDXS, native build) was not worth the risk before the deadline. PR 8 ships the
-   write-up only: `docs/on-device-diffusion.md`. *In review.*
-9. Move to GitHub with GitHub Actions CI (build, tests, lint, screenshot verification). Last, so everything is
-   fine-tuned on Gitblit first.
+   write-up only: `docs/on-device-diffusion.md`. *Merged.*
+9. Move to GitHub with GitHub Actions CI: a public repository; checks on every PR and push to master (format, lint,
+   JVM/Robolectric tests, screenshots, both builds), instrumented tests on an emulator, the release APK as an
+   artifact and on tagged GitHub Releases. CI has no Cloudflare secrets (a public APK must not carry the token).
+   *In review.*
 
 ## Environment
 

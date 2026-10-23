@@ -13,6 +13,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -161,6 +162,7 @@ class StoryViewModelTest {
     }
 
     /** Keeps `uiState` subscribed (it is shared while collected), eagerly so each change is visible at once. */
+    @OptIn(ExperimentalCoroutinesApi::class) // UnconfinedTestDispatcher
     private fun StoryViewModel.collectIn(scope: TestScope) {
         scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) { uiState.collect {} }
     }

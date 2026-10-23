@@ -1,5 +1,7 @@
 # HN Visual Feed
 
+[![CI](https://github.com/emirkuljanin/hn-visual-feed/actions/workflows/ci.yml/badge.svg)](https://github.com/emirkuljanin/hn-visual-feed/actions/workflows/ci.yml)
+
 An Android app that shows Hacker News top stories as an endless feed of image cards. Each story gets a picture
 generated from its title, on the device at once and by a cloud text-to-image model when the free quota allows.
 Stories, comments and pictures are stored locally, so the app works offline.
@@ -91,8 +93,26 @@ shared fakes for tests. The rules agents and humans follow are in [`AGENTS.md`](
 | Screenshot tests (Roborazzi): every screen state, light and dark, offline, largest font, a frame of the transition | `*/src/test/screenshots` | Robolectric |
 | Database migrations, the real MediaPipe model, one real Cloudflare call (opt-in) | `*/src/androidTest` | device or emulator |
 
-Everything except the last row runs without a device, so CI needs no emulator. The `verify-build` skill
-(`.claude/skills/verify-build`) lists the full check sequence used before every PR.
+The `verify-build` skill (`.claude/skills/verify-build`) lists the full check sequence used before every PR.
+
+### CI and releases
+
+GitHub Actions ([`.github/workflows`](.github/workflows)) runs the same checks on every pull request and every
+push to `master`:
+
+- **Checks**: formatting, lint (no issues allowed, warnings included), all JVM and Robolectric tests, screenshot
+  verification, debug and release builds, with Kotlin warnings as errors. The release APK is kept as a build
+  artifact; reports and screenshot diffs are uploaded when something fails.
+- **Instrumented tests** on an API 35 x86_64 emulator: database migrations and the real MediaPipe model.
+- **Releases**: pushing a `v*` tag on `master` attaches the release APK and its R8 mapping file to a GitHub Release
+  (a tag like `v1.1.0-rc1` makes a pre-release); the app reports the tag as its version. The APK is R8-minified
+  and debug-signed so it installs without a keystore, but each build machine has its own debug key: to switch
+  between a release, a CI artifact and your own build, uninstall first.
+- **Supply chain**: actions pinned to commit SHAs, Dependabot for actions and the library and plugin versions, read-only tokens,
+  and the release build runs in a job that cannot write to the repository.
+
+CI has no Cloudflare credentials on purpose: a token compiled into a public APK can be extracted. CI-built APKs
+therefore show on-device art only; a build with cloud pictures needs your own account (see *Optional: cloud thumbnails*).
 
 ## How it was built
 
@@ -106,7 +126,10 @@ reviewable and repeatable rather than one-off:
   Google (`agp-9-upgrade`, `edge-to-edge`, `navigation-3`; see `THIRD_PARTY.md`).
 - **A reviewer agent** (`.claude/agents/pr-reviewer.md`) reviews every branch before it becomes a PR. Its findings
   are fixed or answered, then reviewed again, and listed in the commit's "Pre-review" section.
-- **One PR per planned task**, each reviewed and merged by a human before the next one starts.
+- **One PR per planned task**, each reviewed and merged by a human before the next one starts. PRs 1-8 were
+  reviewed on a self-hosted Gitblit server (the "Merged #n" commits by `admin`); GitHub from PR 9 on.
+- **CI** (GitHub Actions) repeats the agent's local checks on every PR, so "it passed on my machine" is not the
+  last word.
 
 ## Modules
 

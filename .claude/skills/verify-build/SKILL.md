@@ -23,7 +23,8 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
 4. Screenshots: `./gradlew verifyRoborazziDebug` compares against `*/src/test/screenshots` (this is the check that
    catches visual regressions). `recordRoborazziDebug` re-records; only when the UI change is intended, and say
    so in the PR. Look at changed PNGs before committing them.
-5. Lint: `./gradlew lintDebug`. Must end with "No issues found" in `app/build/reports/lint-results-debug.txt`.
+5. Lint: `./gradlew lintDebug`. Warnings fail it too (build-logic sets `warningsAsErrors`); reports are in each
+   module's `build/reports/lint-results-debug.txt`.
 6. UI tests on the emulator: `./gradlew connectedDebugAndroidTest`. Add
    `-Pandroid.testInstrumentationRunnerArguments.liveCloudflare=true` to include the one real Cloudflare call
    (costs quota). Skipped instrumented tests (JUnit assumptions) show up as `<failure>` entries with an
@@ -31,6 +32,12 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
 
 Redirect long output to a file in `$TEMP` and grep it (`^e:|^w:|FAIL|BUILD`), rather than dumping it all.
 Treat new Kotlin warnings (`^w:`) as things to fix; CI builds with `-PwarningsAsErrors=true`.
+
+## CI
+
+`.github/workflows/ci.yml` runs steps 1-5 with `--continue -PwarningsAsErrors=true`, and step 6 on an API 35
+emulator, on Linux (ubuntu-24.04). Screenshots recorded here must also pass there. CI runs on every pull request;
+it must be green before a merge. Run steps 1-5 with the same flags locally to catch what CI would.
 
 ## Emulator
 
