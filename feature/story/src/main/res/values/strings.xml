@@ -19,6 +19,8 @@
     <!-- Badge next to comments by the story's author ("original poster"). -->
     <string name="feature_story_original_poster">OP</string>
     <string name="feature_story_original_poster_description">Story author</string>
+    <!-- TalkBack, on replies: how deep in the thread the comment is. -->
+    <string name="feature_story_reply_level">Reply, level %1$d</string>
     <string name="feature_story_deleted">[deleted]</string>
     <string name="feature_story_flagged">[flagged]</string>
     <plurals name="feature_story_show_replies">

@@ -67,8 +67,9 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
      images, two-tier preview/upgrade with a quota pause, app wiring (exclude MediaPipe's unused textgenai `.so`,
      ABI filters, R8 check of the embedder in a release build). *Merged.*
 6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
-   `:app`, shared composables moved to `:core:ui`). *In review.*
-7. Polish: offline/error states, Compose UI tests, README decisions.
+   `:app`, shared composables moved to `:core:ui`). *Merged.*
+7. Polish: offline awareness with automatic retry, accessibility (TalkBack, largest font), shared thumbnail
+   transition, app-level Hilt UI tests on Robolectric, README overhaul for reviewers. *In review.*
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check
    (RAM, arm64, SoC, free storage, Vulkan, thermal) and a one-step benchmark, Wi-Fi/charging-only model download,
    `DiffusionImageGenerator` behind the existing interface. Testable on the user's physical Pixel 7 Pro (Tensor G2,

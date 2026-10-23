@@ -1,9 +1,29 @@
 # HN Visual Feed
 
-An Android app that shows Hacker News top stories as a paged feed of image cards. Each story gets a
-thumbnail generated from its title, and stories and images are stored locally so the feed works offline.
+An Android app that shows Hacker News top stories as an endless feed of image cards. Each story gets a picture
+generated from its title, on the device at once and by a cloud text-to-image model when the free quota allows.
+Stories, comments and pictures are stored locally, so the app works offline.
 
-> Work in progress. Built as a take-home assignment, one reviewed PR at a time.
+| Feed (cloud thumbnails) | Story (on-device art) | Comments |
+| --- | --- | --- |
+| ![The feed: story cards with generated pictures](docs/images/feed.png) | ![A story with its header picture, metadata and first comments](docs/images/story.png) | ![An expanded comment thread](docs/images/thread.png) |
+
+Built as a take-home assignment, one reviewed PR at a time; each commit message explains the decisions in it and
+what its review found.
+
+## Features
+
+- **Top stories, endlessly**: Paging 3 with a `RemoteMediator` over Room. Pages load as you scroll; pull to
+  refresh; the order stays stable while you read.
+- **A picture for every story**: on-device art right away (a sentence embedding of the title painted as abstract
+  shapes), upgraded to a FLUX.1 image on Cloudflare Workers AI as the free daily quota allows, best stories
+  first. A title safety filter keeps some topics on device.
+- **Story and comments**: the story with its full comment tree. Top-level comments load as you scroll, replies
+  when you expand them.
+- **Offline first**: everything you have seen stays readable without a connection. The app says when it is
+  offline and retries what failed when the connection returns.
+- **Details**: the thumbnail flies from the card into the story (shared element transition, also with predictive
+  back); TalkBack support; layouts that hold up at the largest font size; dark theme and Material You colours.
 
 ## Building
 
@@ -34,6 +54,60 @@ CLOUDFLARE_API_TOKEN=your-token
 The free tier is 10,000 neurons a day, about 170 images. Use a token scoped to Workers AI only: it is compiled
 into the APK, so anyone with the APK can extract it (see "Image generation" below).
 
+## Architecture
+
+**UI (Compose) → ViewModel → Repository → data sources.** Room is the single source of truth: the network and
+the image generators only write into it, and screens observe it, which is what makes the app work offline.
+Background work (thumbnails) runs in WorkManager.
+
+```mermaid
+flowchart LR
+    app[":app<br/>navigation"] --> feed[":feature:feed"]
+    app --> story[":feature:story"]
+    app --> ui
+    feed --> data[":core:data"]
+    story --> data
+    feed --> ui[":core:ui"]
+    story --> ui
+    ui --> ds[":core:designsystem"]
+    data --> network[":core:network"]
+    data --> database[":core:database"]
+    data --> imagegen[":core:imagegen"]
+    network --> model[":core:model"]
+    database --> model
+    imagegen --> model
+```
+
+Every Android module may also use `:core:common` (injected dispatchers and clock); `:core:testing` holds the
+shared fakes for tests. The rules agents and humans follow are in [`AGENTS.md`](AGENTS.md).
+
+## Testing
+
+| Kind | Where | Runs on |
+| --- | --- | --- |
+| Unit tests: network (MockWebServer), DAOs and repositories (in-memory Room), Paging (`asSnapshot`), ViewModels, workers, image pipeline | each module's `src/test` | JVM + Robolectric |
+| Compose UI tests of each screen | `feature/*/src/test` | Robolectric |
+| App-level UI tests: the real app with Hilt and fake repositories (navigation, back, recreation, offline, the transition) | `app/src/test` | Robolectric |
+| Screenshot tests (Roborazzi): every screen state, light and dark, offline, largest font, a frame of the transition | `*/src/test/screenshots` | Robolectric |
+| Database migrations, the real MediaPipe model, one real Cloudflare call (opt-in) | `*/src/androidTest` | device or emulator |
+
+Everything except the last row runs without a device, so CI needs no emulator. The `verify-build` skill
+(`.claude/skills/verify-build`) lists the full check sequence used before every PR.
+
+## How it was built
+
+The code was written with an AI coding agent (Claude Code) under human review, set up so the results are
+reviewable and repeatable rather than one-off:
+
+- **[`AGENTS.md`](AGENTS.md)** holds the architecture rules, conventions and commands every agent (and human)
+  follows; **[`.claude/project-brief.md`](.claude/project-brief.md)** the assignment, agreed decisions and the
+  PR plan.
+- **Skills** in `.claude/skills`: project workflows (`verify-build`, `open-pr`) and official Android skills from
+  Google (`agp-9-upgrade`, `edge-to-edge`, `navigation-3`; see `THIRD_PARTY.md`).
+- **A reviewer agent** (`.claude/agents/pr-reviewer.md`) reviews every branch before it becomes a PR. Its findings
+  are fixed or answered, then reviewed again, and listed in the commit's "Pre-review" section.
+- **One PR per planned task**, each reviewed and merged by a human before the next one starts.
+
 ## Modules
 
 | Module | Responsibility |
@@ -58,9 +132,9 @@ Modules arrive with the PRs that need them, so no module exists without code in 
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
 Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, Navigation 3, WorkManager, Coil 3, MediaPipe Tasks
-(text embedder), Cloudflare Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
-MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dependency versions live in
-[`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+(text embedder), Cloudflare Workers AI. Tests: JUnit4, kotlinx-coroutines-test, Turbine, MockWebServer,
+Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Roborazzi. All dependency versions
+(always the latest stable) live in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
 ## Decisions & trade-offs
 
@@ -297,3 +371,33 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
   so both screens use the same ones, and `PreviewTheme` makes previews, screenshot and UI tests deterministic.
 - **Not yet**: poll options (`pollopt` items) are not shown; collapsing a whole subtree beyond hiding replies, and
   refreshing replies below the first level, are left out.
+
+### Offline, accessibility, transitions and app-level tests
+
+- **Offline awareness**: a `NetworkMonitor` (`ConnectivityManager` callbacks as a `Flow`, as in Now in Android)
+  tells screens whether a network is up. Offline, they say so instead of reporting a failed refresh, and when the
+  connection returns they retry what failed (Paging's `retry()` for the feed, also when the feed comes back on
+  screen after reconnecting elsewhere; the refresh and failed comment pages for a story).
+  - "Online" means a network Android has *validated*, so Wi-Fi behind a captive portal does not trigger retries
+    that would fail. Trade-off: a network that never validates shows as offline, though requests are still tried
+    and their failures handled as usual.
+  - The banner sits above the list, not in it: an item inserted at the top of a keyed list lands above the first
+    visible item, off-screen, where TalkBack would never announce it.
+- **TalkBack**: a comment is one item (author, time, text) with its replies button after it, replies announce
+  their nesting level, the "OP" badge reads "Story author", the offline note is a polite live region, and screen
+  and section titles are headings. Links inside a merged comment still open. Covered by UI tests on the semantics
+  tree.
+- **Large fonts**: screenshot tests at 200% (Android's maximum) for the feed and nested comments. Feed titles
+  stop at three lines (the full title is on the story screen and read in full by TalkBack).
+- **Shared thumbnail transition**: a `SharedTransitionLayout` around `NavDisplay`; the app hands each entry's
+  animation to features through two composition locals in `:core:ui`, so features need no navigation dependency
+  and previews and tests (without those scopes) render normally. Screens change with Material's "fade through"
+  (90 ms out, 210 ms in) so their text never overlaps while the picture moves. Both thumbnails use the file path
+  as their memory cache key, so the story header shows the card's image on its first frame instead of a
+  placeholder. An app-level test with real image files pauses the Compose clock halfway and keeps that frame as
+  a screenshot.
+- **App-level UI tests on Robolectric**: `MainActivity` with Hilt, real navigation, ViewModels and screens, with
+  `DataModule` and `ClockModule` replaced by fakes (`@TestInstallIn`). They cover what screen tests cannot:
+  moving between screens, system and top-bar back, state across recreation, offline on both screens. They need
+  no emulator, so CI can run them. (`DataModule` is public only so tests can replace it; its bindings stay
+  internal.)

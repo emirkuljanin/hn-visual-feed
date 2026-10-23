@@ -9,6 +9,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -36,6 +37,18 @@ class FeedScreenScreenshotTest {
     @Test
     fun feed_refreshFailed() = capture("feed_refresh_failed") {
         FeedTestContent(feed(stories = testStories, refresh = error))
+    }
+
+    /** The largest font size Android offers (200%): nothing may clip or overlap. */
+    @Test
+    fun feed_largestFont() {
+        RuntimeEnvironment.setFontScale(2f)
+        capture("feed_largest_font") { FeedTestContent(feed(stories = testStories)) }
+    }
+
+    @Test
+    fun feed_offline() = capture("feed_offline") {
+        FeedTestContent(feed(stories = testStories, refresh = error), isOffline = true)
     }
 
     @Test

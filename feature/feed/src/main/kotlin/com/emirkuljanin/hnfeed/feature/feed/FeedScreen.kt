@@ -1,6 +1,7 @@
 package com.emirkuljanin.hnfeed.feature.feed
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -18,14 +19,18 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
@@ -33,6 +38,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import com.emirkuljanin.hnfeed.core.model.Story
+import com.emirkuljanin.hnfeed.core.ui.OfflineBanner
 import com.emirkuljanin.hnfeed.core.ui.PreviewTheme
 import kotlinx.coroutines.flow.flowOf
 
@@ -43,8 +49,10 @@ fun FeedRoute(
     modifier: Modifier = Modifier,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     FeedScreen(
         stories = viewModel.stories.collectAsLazyPagingItems(),
+        isOffline = uiState.isOffline,
         onStoryClick = { story -> onStoryClick(story.id) },
         modifier = modifier,
     )
@@ -55,30 +63,33 @@ fun FeedRoute(
  *
  * | Stories on screen | Load state                      | Shown                                         |
  * |-------------------|---------------------------------|-----------------------------------------------|
- * | yes               | any                             | list (+ refresh-failed banner, footer)         |
+ * | yes               | any                             | banner (offline or refresh failed) + list + footer |
  * | no                | refresh or first append loading | spinner                                        |
  * | no                | refresh or first append failed  | error with retry                               |
  * | no                | done                            | empty, with a refresh button                  |
  *
- * Retry and refresh go straight to Paging.
+ * Retry and refresh go straight to Paging. While [isOffline] the banner says so instead of reporting a failed
+ * refresh, and failed loads are retried by themselves as soon as the connection is back.
  */
 // TopAppBar and PullToRefreshBox are still @ExperimentalMaterial3Api in the Material 3 version in the Compose BOM.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FeedScreen(
     stories: LazyPagingItems<Story>,
+    isOffline: Boolean,
     onStoryClick: (Story) -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
 ) {
     ScrollToTopAfterRemoteRefresh(stories, listState)
+    RetryWhenBackOnline(stories, isOffline)
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.feature_feed_title)) },
+                title = { Text(stringResource(R.string.feature_feed_title), Modifier.semantics { heading() }) },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -88,20 +99,36 @@ internal fun FeedScreen(
             .fillMaxSize()
             .padding(padding)
             .consumeWindowInsets(padding)
+        val layoutDirection = LocalLayoutDirection.current
         when {
-            stories.itemCount > 0 -> PullToRefreshBox(
-                isRefreshing = loadState.mediator?.refresh is LoadState.Loading,
-                onRefresh = stories::refresh,
+            stories.itemCount > 0 -> Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = padding.calculateTopPadding()),
             ) {
-                StoryList(
-                    stories = stories,
-                    onStoryClick = onStoryClick,
-                    listState = listState,
-                    contentPadding = padding,
+                // Above the list, not in it: an item inserted at the top of a keyed list lands above the first
+                // visible item, off-screen, and TalkBack would never announce it.
+                val bannerModifier = Modifier.padding(
+                    start = padding.calculateStartPadding(layoutDirection) + 16.dp,
+                    end = padding.calculateEndPadding(layoutDirection) + 16.dp,
+                    top = 8.dp,
                 )
+                when {
+                    isOffline -> OfflineBanner(bannerModifier)
+                    loadState.refresh is LoadState.Error -> RefreshFailedBanner(stories::retry, bannerModifier)
+                }
+                PullToRefreshBox(
+                    isRefreshing = loadState.mediator?.refresh is LoadState.Loading,
+                    onRefresh = stories::refresh,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    StoryList(
+                        stories = stories,
+                        onStoryClick = onStoryClick,
+                        listState = listState,
+                        contentPadding = padding,
+                    )
+                }
             }
 
             // A first page in which nothing was showable leaves the list empty while Paging appends the next one.
@@ -109,7 +136,7 @@ internal fun FeedScreen(
                 FeedLoading(contentModifier)
 
             loadState.refresh is LoadState.Error || loadState.append is LoadState.Error ->
-                FeedError(onRetry = stories::retry, modifier = contentModifier)
+                FeedError(isOffline = isOffline, onRetry = stories::retry, modifier = contentModifier)
 
             else -> FeedEmpty(onRefresh = stories::refresh, modifier = contentModifier)
         }
@@ -143,6 +170,18 @@ private fun ScrollToTopAfterRemoteRefresh(stories: LazyPagingItems<Story>, listS
     }
 }
 
+/**
+ * Retries failed loads whenever the screen sees a connection: when it comes back, and also when the feed returns
+ * to the screen after the connection came back elsewhere. `retry()` only re-runs loads that failed, so calling it
+ * when nothing failed does nothing.
+ */
+@Composable
+private fun RetryWhenBackOnline(stories: LazyPagingItems<Story>, isOffline: Boolean) {
+    LaunchedEffect(isOffline) {
+        if (!isOffline) stories.retry()
+    }
+}
+
 @Composable
 private fun StoryList(
     stories: LazyPagingItems<Story>,
@@ -163,11 +202,6 @@ private fun StoryList(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (loadState.refresh is LoadState.Error) {
-            item(key = "refresh-error", contentType = "refresh-error") {
-                RefreshFailedBanner(onRetry = stories::retry)
-            }
-        }
         items(
             count = stories.itemCount,
             key = stories.itemKey { it.id },
@@ -192,6 +226,10 @@ private fun StoryList(
 @Composable
 private fun FeedScreenPreview() {
     PreviewTheme {
-        FeedScreen(stories = flowOf(PagingData.from(previewStories)).collectAsLazyPagingItems(), onStoryClick = {})
+        FeedScreen(
+            stories = flowOf(PagingData.from(previewStories)).collectAsLazyPagingItems(),
+            isOffline = false,
+            onStoryClick = {},
+        )
     }
 }

@@ -5,6 +5,7 @@ import com.emirkuljanin.hnfeed.core.testing.MainDispatcherRule
 import com.emirkuljanin.hnfeed.core.testing.data.testStories
 import com.emirkuljanin.hnfeed.core.testing.data.testStoryComments
 import com.emirkuljanin.hnfeed.core.testing.repository.FakeStoryDetailsRepository
+import com.emirkuljanin.hnfeed.core.testing.util.TestNetworkMonitor
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,6 +27,7 @@ class StoryViewModelTest {
 
     private val story = testStories.first()
     private val repository = FakeStoryDetailsRepository(story = story, comments = testStoryComments)
+    private val networkMonitor = TestNetworkMonitor()
 
     @Test
     fun opening_refreshesTheStory_andShowsTheCachedOneMeanwhile() = runTest {
@@ -56,6 +58,44 @@ class StoryViewModelTest {
 
         assertFalse(viewModel.uiState.value.refreshFailed)
         assertEquals(2, repository.refreshes.size)
+    }
+
+    @Test
+    fun comingBackOnline_retriesTheFailedRefreshAndCommentPages_only() = runTest {
+        repository.failure = IOException("offline")
+        val viewModel = viewModel()
+        viewModel.collectIn(this)
+        viewModel.loadMore(story.id)
+        networkMonitor.setOnline(false)
+        assertTrue(viewModel.uiState.value.isOffline)
+
+        repository.failure = null
+        networkMonitor.setOnline(true)
+
+        assertFalse(viewModel.uiState.value.isOffline)
+        assertFalse(viewModel.uiState.value.refreshFailed)
+        assertEquals(2, repository.refreshes.size)
+        assertEquals(listOf(story.id, story.id), repository.loadMoreRequests)
+
+        // Nothing failed this time: going offline and back changes nothing.
+        networkMonitor.setOnline(false)
+        networkMonitor.setOnline(true)
+        assertEquals(2, repository.refreshes.size)
+    }
+
+    @Test
+    fun startingOffline_thenComingOnline_retriesExactlyOnce() = runTest {
+        networkMonitor.setOnline(false)
+        repository.failure = IOException("offline")
+        val viewModel = viewModel()
+        viewModel.collectIn(this)
+        assertTrue(viewModel.uiState.value.isOffline)
+
+        repository.failure = null
+        networkMonitor.setOnline(true)
+
+        assertEquals(2, repository.refreshes.size, "The failed refresh, retried once")
+        assertFalse(viewModel.uiState.value.refreshFailed)
     }
 
     @Test
@@ -128,6 +168,10 @@ class StoryViewModelTest {
     private fun topLevelMore(viewModel: StoryViewModel) =
         viewModel.uiState.value.comments.filterIsInstance<CommentListItem.MoreComments>().single { it.isTopLevel }
 
-    private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-        StoryViewModel(storyId = story.id, repository = repository, savedStateHandle = savedState)
+    private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) = StoryViewModel(
+        storyId = story.id,
+        repository = repository,
+        networkMonitor = networkMonitor,
+        savedStateHandle = savedState,
+    )
 }

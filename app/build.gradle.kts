@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.hnfeed.android.application.compose)
     alias(libs.plugins.hnfeed.android.hilt)
+    alias(libs.plugins.hnfeed.android.roborazzi)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -40,6 +41,7 @@ android {
 
 dependencies {
     implementation(projects.core.designsystem)
+    implementation(projects.core.ui)
     implementation(projects.feature.feed)
     implementation(projects.feature.story)
 
@@ -52,8 +54,9 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.work.runtime)
 
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // App-level UI tests on Robolectric: the real app with Hilt, repositories swapped for fakes.
+    testImplementation(projects.core.common)
+    testImplementation(projects.core.testing)
+    testImplementation(libs.hilt.android.testing)
+    kspTest(libs.hilt.compiler)
 }

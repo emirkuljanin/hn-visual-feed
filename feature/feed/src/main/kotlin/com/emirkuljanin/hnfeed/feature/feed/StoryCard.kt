@@ -22,6 +22,7 @@ import com.emirkuljanin.hnfeed.core.ui.StoryLabels
 import com.emirkuljanin.hnfeed.core.ui.StoryThumbnail
 import com.emirkuljanin.hnfeed.core.ui.storyByline
 import com.emirkuljanin.hnfeed.core.ui.storyCounts
+import com.emirkuljanin.hnfeed.core.ui.storyThumbnailKey
 
 @Composable
 internal fun StoryCard(story: Story, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -32,6 +33,7 @@ internal fun StoryCard(story: Story, onClick: () -> Unit, modifier: Modifier = M
     ) {
         StoryThumbnail(
             thumbnail = story.thumbnail,
+            sharedElementKey = storyThumbnailKey(story.id),
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f),
