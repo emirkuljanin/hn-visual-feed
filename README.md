@@ -242,7 +242,7 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
 
 - **Two tiers: a preview, then an upgrade**: `ThumbnailGenerator.generatePreview` always succeeds with on-device
   art in well under a second, offline and without quota, so no card waits on the network. `generateUpgrade` tries
-  the better generators (cloud today, on-device diffusion in PR 8) in order and reports what happened:
+  the better generators (cloud today; another generator slots into the list) in order and reports what happened:
   `Upgraded`, `NotApplicable` (no credentials, or the safety filter keeps the title on device), `Rejected`
   (moderation or bad credentials: 4xx other than 408/429; a retry would fail the same way), `QuotaExhausted`
   (HTTP 429 with Cloudflare's code 3036, the daily free allocation), `Unavailable` (no connection, DNS, 429
@@ -328,6 +328,13 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   unavailable vs. per-story failures, give-up after 3 attempts, cleanup). Workers are tested with
   `TestListenableWorkerBuilder`, the scheduler against WorkManager's test implementation (`TestDriver`: network
   constraint, quota-resume delay, unique-work policies); the store and the pause have their own tests.
+
+### On-device diffusion (investigated, dropped)
+
+Fully on-device text-to-image as a third thumbnail tier was the stretch goal. Google's MediaPipe generator runs on a
+Pixel 7 Pro but draws noise on its GPU; the model was verified byte for byte against the official weights, which
+points to the engine on this GPU and driver. The investigation, the alternatives and what the one plausible path
+(stable-diffusion.cpp on the CPU) would take are in [docs/on-device-diffusion.md](docs/on-device-diffusion.md).
 
 ### Story and comments (`:feature:story`)
 
