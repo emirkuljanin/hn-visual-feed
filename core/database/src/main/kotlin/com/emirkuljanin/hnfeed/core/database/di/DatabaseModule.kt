@@ -7,6 +7,7 @@ import com.emirkuljanin.hnfeed.core.common.dispatchers.IoDispatcher
 import com.emirkuljanin.hnfeed.core.database.DatabaseTransactionRunner
 import com.emirkuljanin.hnfeed.core.database.HnDatabase
 import com.emirkuljanin.hnfeed.core.database.RoomDatabaseTransactionRunner
+import com.emirkuljanin.hnfeed.core.database.dao.CommentDao
 import com.emirkuljanin.hnfeed.core.database.dao.StoryDao
 import com.emirkuljanin.hnfeed.core.database.dao.ThumbnailDao
 import com.emirkuljanin.hnfeed.core.database.dao.TopStoryDao
@@ -43,6 +44,9 @@ internal object DatabaseModule {
 
     @Provides
     fun thumbnailDao(database: HnDatabase): ThumbnailDao = database.thumbnailDao()
+
+    @Provides
+    fun commentDao(database: HnDatabase): CommentDao = database.commentDao()
 }
 
 @Module

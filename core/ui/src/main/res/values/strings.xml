@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Story metadata -->
+    <!-- e.g. "by pg · 3 hours ago" -->
+    <string name="core_ui_byline">by %1$s · %2$s</string>
+    <!-- e.g. "120 points · 45 comments" -->
+    <string name="core_ui_counts">%1$s · %2$s</string>
+    <plurals name="core_ui_points">
+        <item quantity="one">%d point</item>
+        <item quantity="other">%d points</item>
+    </plurals>
+    <plurals name="core_ui_comments">
+        <item quantity="one">%d comment</item>
+        <item quantity="other">%d comments</item>
+    </plurals>
+    <string name="core_ui_type_job">Job</string>
+    <string name="core_ui_type_poll">Poll</string>
+
+    <!-- Load states -->
+    <string name="core_ui_retry">Retry</string>
+</resources>

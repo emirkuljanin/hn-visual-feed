@@ -38,25 +38,27 @@ into the APK, so anyone with the APK can extract it (see "Image generation" belo
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Application, Hilt entry point, top-level wiring |
+| `:app` | Application, Hilt entry point, navigation (Navigation 3) |
 | `:core:common` | Cross-cutting utilities: injectable coroutine dispatchers and `Clock` |
-| `:core:data` | Repositories, the Paging `RemoteMediator` and the thumbnail pipeline (WorkManager): write into Room |
-| `:core:designsystem` | Material 3 theme and shared UI components |
+| `:core:data` | Repositories, the Paging `RemoteMediator`, comment loading and the thumbnail pipeline: write into Room |
+| `:core:designsystem` | Material 3 theme and the injected clock for Compose; knows no domain types |
 | `:core:imagegen` | Story thumbnails: cloud text-to-image, on-device embedding + procedural art, safety filter |
-| `:core:model` | Pure Kotlin domain types (`Story`), shared by every layer |
+| `:core:model` | Pure Kotlin domain types (`Story`, `Comment`), shared by every layer |
 | `:core:network` | Hacker News API client (Retrofit + kotlinx.serialization) |
-| `:core:database` | Room database: cached stories, the top-stories snapshot and thumbnail state |
+| `:core:database` | Room database: cached stories, the top-stories snapshot, thumbnail state and comment trees |
 | `:core:testing` | Test-only: shared fakes, test data with a fixed "now", `MainDispatcherRule` |
+| `:core:ui` | Composables shared by features: story thumbnail and metadata, load states, `PreviewTheme` |
 | `:feature:feed` | The story feed screen: cards, load states, pull-to-refresh |
+| `:feature:story` | A story with its comment tree: header, nested comments loaded on demand |
 | `build-logic` | Convention plugins (SDK levels, Compose, Hilt, Room, Roborazzi, Kotlin options) |
 
-More modules (`:feature:story`) arrive with the PRs that need them, so no module exists without code in it.
+Modules arrive with the PRs that need them, so no module exists without code in it.
 
 ## Tech stack
 
 Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Jetpack Compose + Material 3, Hilt (KSP), Coroutines,
-Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, WorkManager, Coil 3, MediaPipe Tasks (text
-embedder), Cloudflare Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
+Retrofit 3 + OkHttp 5 + kotlinx.serialization, Room 3, Paging 3, Navigation 3, WorkManager, Coil 3, MediaPipe Tasks
+(text embedder), Cloudflare Workers AI. Tests: JUnit4, kotlinx-coroutines-test,
 MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dependency versions live in
 [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
@@ -152,7 +154,7 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
 - **Pull-to-refresh** shows the mediator refresh (network), not the combined state, so it does not flicker on
   local Room reloads.
 - **Safe links**: only `http(s)` URLs are kept from the API; opening one is guarded because a device without a
-  browser would otherwise crash. Text posts open their HN discussion (until the story detail screen exists).
+  browser would otherwise crash. A card opens the story screen; the article opens from there.
 - **Time**: "2 hours ago" uses the platform's localized relative time against `LocalClock`, which `MainActivity`
   sets to the same injected `Clock` the data layer uses; tests fix it. Small clock skew never shows "In 2 minutes".
 - **Screenshot tests** (Roborazzi on Robolectric, `src/test/screenshots`) cover every state in light and dark with
@@ -252,3 +254,46 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
   unavailable vs. per-story failures, give-up after 3 attempts, cleanup). Workers are tested with
   `TestListenableWorkerBuilder`, the scheduler against WorkManager's test implementation (`TestDriver`: network
   constraint, quota-resume delay, unique-work policies); the store and the pause have their own tests.
+
+### Story and comments (`:feature:story`)
+
+- **Comments are an adjacency list in Room**: every row has a parent (the story for top-level comments) and a rank
+  among its siblings, the order of the parent's `kids` in the API. One flat table holds the whole tree; the UI
+  flattens what is expanded (`buildCommentList`, a pure function with its own tests).
+- **Stubs before content**: loading a comment also writes its replies as id-only rows (`is_loaded = 0`). Every level
+  therefore knows how many replies it has and which to fetch next before fetching any, also offline. Items the
+  API cannot return (unknown ids, wrong type) are removed. The API lists deleted replies too: once loaded, those
+  without replies of their own are hidden and no longer counted, but until then "Show 12 replies" may include
+  some.
+- **Lazy, by levels**: opening a story refreshes it and fetches its first 20 top-level comments (one request each,
+  in parallel: the API has no batch endpoint). More top-level comments load as the user scrolls to the end. Replies
+  load only when the user expands a comment, 20 at a time. A story with 300 comments costs about 21 requests to
+  open, not 300.
+- **Refresh reconciles, never wipes**: a refresh re-ranks the top level, removes comments that disappeared and
+  re-fetches the first page (comments can be edited for two hours), but keeps everything else loaded. Network
+  first, then one transaction, so a failed refresh or "load more" leaves the cache as it was and surfaces as an
+  error on that row (retry), or as a banner above cached content. A "load more" checks inside its transaction
+  that its comments are still the next ones to load (like the feed's APPEND), so a refresh that re-ranked or
+  removed them meanwhile wins and the stale page is dropped.
+- **Trade-off: re-ranking under the reader**: HN reorders comments by score. After a refresh, comments beyond the
+  first page that were already loaded keep showing, and newly ranked ones load in above them when the user
+  reaches the "more" row. The final order is right; showing only up to the first unloaded comment would hide
+  content the user had already read.
+- **Deleted and flagged comments** stay as "[deleted]" / "[flagged]" placeholders only while they have replies, as
+  on Hacker News; flagged text is not stored. Comments by the story's author get an "OP" badge.
+- **HTML**: comment and Ask HN bodies are the API's HTML, rendered with Compose's `AnnotatedString.fromHtml`
+  (paragraphs, italics, code, tappable links; only `http(s)` links open). Nothing in it is executed. The parser
+  ignores `<pre>` and collapses whitespace, so code blocks are rewritten with `<br>` and non-breaking spaces first.
+- **Navigation guards**: a quick double tap could otherwise open a story twice or pop the feed as well (an empty
+  back stack makes `NavDisplay` throw), so each callback acts only while its entry is on top.
+- **Expanded threads are UI state**: which comments are expanded lives in the ViewModel's `SavedStateHandle`, so it
+  survives process death; the comments themselves are in Room.
+- **Navigation 3** in `:app`: a saveable back stack of serializable keys (`FeedKey`, `StoryKey(id)`), with entry
+  decorators that give each entry its own saved state (the feed keeps its scroll position) and its own
+  `ViewModelStore` (each story gets its own `StoryViewModel`, created with the id through Hilt assisted injection).
+  Features know nothing about navigation; the feed reports a story id. Implemented with Google's official
+  `navigation-3` agent skill (`.claude/skills/navigation-3`, trimmed to the recipes this app uses).
+- **Shared UI in `:core:ui`**: the story thumbnail, labels, byline and load-state components moved out of the feed
+  so both screens use the same ones, and `PreviewTheme` makes previews, screenshot and UI tests deterministic.
+- **Not yet**: poll options (`pollopt` items) are not shown; collapsing a whole subtree beyond hiding replies, and
+  refreshing replies below the first level, are left out.

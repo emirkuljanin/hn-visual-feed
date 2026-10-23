@@ -43,14 +43,16 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   counted) or at a per-story transient error (backoff, give up after 3); cards observe Room and swap
   placeholder → preview → cloud image.
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
-  Room 3 (platform SQLite driver), Paging 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
+  Room 3 (platform SQLite driver), Paging 3, Navigation 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
   stable versions.
 - **Modules**: `:app`, `:core:common` (dispatchers), `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
-  `:core:designsystem`, `:core:testing`, `:feature:feed`, `:feature:story`, `build-logic` convention plugins.
+  `:core:designsystem`, `:core:ui` (shared model-aware composables, PR 6), `:core:testing`, `:feature:feed`,
+  `:feature:story`, `build-logic` convention plugins.
   A module is added by the PR that first needs it.
 - **Process**: one PR (Gitblit ticket) per task. Before a ticket is opened, the `pr-reviewer` agent reviews the
   diff and its findings are fixed or answered. The user then reviews and merges each PR before the next starts.
-  Finally the repo moves to GitHub with GitHub Actions CI.
+  Finally (PR 9) the repo moves to GitHub with GitHub Actions CI; until then everything is reviewed and fine-tuned
+  on Gitblit.
 
 ## PR plan
 
@@ -59,18 +61,21 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 3. Paging: RemoteMediator, repository, snapshot logic (tests), minimal list wired into the app. *Merged.*
 4. Feed UI: cards with placeholders, pull-to-refresh, load/error/empty states with retry, scroll to top after a
    refresh, ViewModel tests, Roborazzi screenshots, Compose stability config for `:core:model`. *Merged.*
-5. Image generation, split in two:
+5. Image generation, split in two (both merged):
    - 5a. `:core:imagegen`: generator chain, Cloudflare + on-device generators, safety filter. *Merged.*
    - 5b. Pipeline: `thumbnails` table (first Room migration), WorkManager job, file storage and cleanup, cards show
      images, two-tier preview/upgrade with a quota pause, app wiring (exclude MediaPipe's unused textgenai `.so`,
-     ABI filters, R8 check of the embedder in a release build). *In review.*
-6. Story detail + comments (adjacency list in Room, lazy expansion).
-7. Polish: offline/error states, Compose UI tests, README decisions; later GitHub + Actions.
+     ABI filters, R8 check of the embedder in a release build). *Merged.*
+6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
+   `:app`, shared composables moved to `:core:ui`). *In review.*
+7. Polish: offline/error states, Compose UI tests, README decisions.
 8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check
    (RAM, arm64, SoC, free storage, Vulkan, thermal) and a one-step benchmark, Wi-Fi/charging-only model download,
    `DiffusionImageGenerator` behind the existing interface. Testable on the user's physical Pixel 7 Pro (Tensor G2,
    CPU/GPU path, no Qualcomm NPU). If time runs out: a commented skeleton. PR 5 must leave the generator-selection
    strategy ready for it.
+9. Move to GitHub with GitHub Actions CI (build, tests, lint, screenshot verification). Last, so everything is
+   fine-tuned on Gitblit first.
 
 ## Environment
 

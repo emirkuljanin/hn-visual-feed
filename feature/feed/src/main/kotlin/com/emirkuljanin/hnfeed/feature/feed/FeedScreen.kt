@@ -22,7 +22,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,18 +33,19 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import com.emirkuljanin.hnfeed.core.model.Story
+import com.emirkuljanin.hnfeed.core.ui.PreviewTheme
 import kotlinx.coroutines.flow.flowOf
 
+/** [onStoryClick] gets the story's id: all the app needs to navigate to it. */
 @Composable
-fun FeedRoute(modifier: Modifier = Modifier, viewModel: FeedViewModel = hiltViewModel()) {
-    val uriHandler = LocalUriHandler.current
+fun FeedRoute(
+    onStoryClick: (storyId: Long) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: FeedViewModel = hiltViewModel(),
+) {
     FeedScreen(
         stories = viewModel.stories.collectAsLazyPagingItems(),
-        // Until the story detail screen exists: open the article, or the discussion for text posts.
-        onStoryClick = { story ->
-            // openUri throws when nothing can handle the link (no browser installed, e.g. in a locked-down profile).
-            runCatching { uriHandler.openUri(story.url ?: story.discussionUrl) }
-        },
+        onStoryClick = { story -> onStoryClick(story.id) },
         modifier = modifier,
     )
 }
@@ -191,7 +191,7 @@ private fun StoryList(
 @Preview
 @Composable
 private fun FeedScreenPreview() {
-    FeedPreviewTheme {
+    PreviewTheme {
         FeedScreen(stories = flowOf(PagingData.from(previewStories)).collectAsLazyPagingItems(), onStoryClick = {})
     }
 }

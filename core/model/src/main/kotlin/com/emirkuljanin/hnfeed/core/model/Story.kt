@@ -13,6 +13,8 @@ data class Story(
     val url: String?,
     val commentCount: Int,
     val type: StoryType,
+    /** The body of text posts (Ask HN, jobs, polls), as the API's HTML. `null` for most link posts. */
+    val text: String? = null,
     /** The generated thumbnail, once there is one; the UI shows a placeholder until then. */
     val thumbnail: Thumbnail? = null,
 ) {

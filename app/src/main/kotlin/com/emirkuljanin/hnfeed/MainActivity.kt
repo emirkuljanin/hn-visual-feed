@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import com.emirkuljanin.hnfeed.core.designsystem.theme.HnFeedTheme
 import com.emirkuljanin.hnfeed.core.designsystem.time.LocalClock
-import com.emirkuljanin.hnfeed.feature.feed.FeedRoute
+import com.emirkuljanin.hnfeed.navigation.HnFeedNavDisplay
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Clock
 import javax.inject.Inject
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             CompositionLocalProvider(LocalClock provides clock) {
                 HnFeedTheme {
-                    FeedRoute()
+                    HnFeedNavDisplay()
                 }
             }
         }

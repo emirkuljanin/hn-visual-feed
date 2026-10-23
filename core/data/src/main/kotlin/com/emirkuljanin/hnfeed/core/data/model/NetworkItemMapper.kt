@@ -1,5 +1,6 @@
 package com.emirkuljanin.hnfeed.core.data.model
 
+import com.emirkuljanin.hnfeed.core.database.model.CommentEntity
 import com.emirkuljanin.hnfeed.core.database.model.StoryEntity
 import com.emirkuljanin.hnfeed.core.model.StoryType
 import com.emirkuljanin.hnfeed.core.network.model.NetworkItem
@@ -31,6 +32,28 @@ internal fun NetworkItem.asStoryEntityOrNull(fetchedAt: Instant): StoryEntity? {
         commentCount = descendants ?: 0,
         type = storyType,
         fetchedAt = fetchedAt,
+        text = text?.takeIf { it.isNotBlank() },
+    )
+}
+
+/**
+ * Maps an API item to a loaded comment at the given place in the tree, or `null` if it is not a comment. Deleted
+ * and dead comments are kept (as placeholders, their replies are still worth reading) but without author or text
+ * for deleted ones and without text for dead ones.
+ */
+internal fun NetworkItem.asCommentEntityOrNull(storyId: Long, parentId: Long, rank: Int): CommentEntity? {
+    if (type != "comment") return null
+    return CommentEntity(
+        id = id,
+        storyId = storyId,
+        parentId = parentId,
+        rank = rank,
+        isLoaded = true,
+        author = by.takeUnless { deleted },
+        text = text.takeUnless { deleted || dead },
+        postedAt = time?.takeUnless { deleted }?.let(Instant::ofEpochSecond),
+        deleted = deleted,
+        dead = dead,
     )
 }
 

@@ -4,7 +4,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.dependencies
 
-/** A feature module: a Compose UI library with Hilt ViewModels and the design system. */
+/** A feature module: a Compose UI library with Hilt ViewModels, the design system and shared UI. */
 class AndroidFeatureConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
         with(target) {
@@ -13,6 +13,7 @@ class AndroidFeatureConventionPlugin : Plugin<Project> {
 
             dependencies {
                 add("implementation", project(":core:designsystem"))
+                add("implementation", project(":core:ui"))
                 add("implementation", libs.library("androidx-compose-material3"))
                 add("implementation", libs.library("androidx-hilt-lifecycle-viewmodel-compose"))
                 add("implementation", libs.library("androidx-lifecycle-runtime-compose"))
