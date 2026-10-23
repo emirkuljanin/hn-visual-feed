@@ -29,9 +29,9 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   Two tiers (agreed for 5b): every story gets on-device art at once, then is upgraded to a cloud image as the
   free quota allows, best rank first; at the quota (HTTP 429, code 3036), upgrades pause until it resets
   (midnight UTC). No mandatory
-  model download (opt-in diffusion: PR 8).
+  model download (opt-in on-device diffusion was investigated in PR 8 and dropped).
 - **Safety**: title blocklist (words, stems, phrases) plus an abstract "visual metaphor" prompt; Cloudflare also
-  screens prompts (HTTP 400, the preview stays). Flagged titles go to the on-device generator, which cannot depict anything.
+  screens prompts (HTTP 400, the preview stays). Flagged titles keep the on-device procedural art, which cannot depict anything.
 - **Pagination**: Paging 3 `RemoteMediator`, automatic loading. REFRESH fetches the ~500 top IDs once and stores
   a snapshot table `(rank, storyId)`; APPEND slices the stored snapshot and fetches item details in parallel.
   PagingSource = Room join of snapshot + story + thumbnail ordered by rank.
@@ -69,12 +69,13 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
    `:app`, shared composables moved to `:core:ui`). *Merged.*
 7. Polish: offline awareness with automatic retry, accessibility (TalkBack, largest font), shared thumbnail
-   transition, app-level Hilt UI tests on Robolectric, README overhaul for reviewers. *In review.*
-8. Stretch: opt-in on-device diffusion. Settings toggle with warning, permission-free requirements check
-   (RAM, arm64, SoC, free storage, Vulkan, thermal) and a one-step benchmark, Wi-Fi/charging-only model download,
-   `DiffusionImageGenerator` behind the existing interface. Testable on the user's physical Pixel 7 Pro (Tensor G2,
-   CPU/GPU path, no Qualcomm NPU). If time runs out: a commented skeleton. PR 5 must leave the generator-selection
-   strategy ready for it.
+   transition, app-level Hilt UI tests on Robolectric, README overhaul for reviewers. *Merged.*
+8. Stretch, investigated and dropped (user decision 2026-10-23): opt-in on-device diffusion. MediaPipe Image
+   Generator ran on the user's Pixel 7 Pro (Tensor G2) after working around a mis-built release (full-protobuf
+   call), a MediaPipe version clash and a native-runtime clash, then produced only noise; the community SD 1.5
+   conversion was proven byte-identical to the official weights, which points to the GPU engine/driver. The remaining path
+   (stable-diffusion.cpp on CPU with SDXS, native build) was not worth the risk before the deadline. PR 8 ships the
+   write-up only: `docs/on-device-diffusion.md`. *In review.*
 9. Move to GitHub with GitHub Actions CI (build, tests, lint, screenshot verification). Last, so everything is
    fine-tuned on Gitblit first.
 
