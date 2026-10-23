@@ -292,7 +292,7 @@ MockWebServer, Robolectric, paging-testing, Compose UI tests, Roborazzi. All dep
   decorators that give each entry its own saved state (the feed keeps its scroll position) and its own
   `ViewModelStore` (each story gets its own `StoryViewModel`, created with the id through Hilt assisted injection).
   Features know nothing about navigation; the feed reports a story id. Implemented with Google's official
-  `navigation-3` agent skill (`.claude/skills/navigation-3`).
+  `navigation-3` agent skill (`.claude/skills/navigation-3`, trimmed to the recipes this app uses).
 - **Shared UI in `:core:ui`**: the story thumbnail, labels, byline and load-state components moved out of the feed
   so both screens use the same ones, and `PreviewTheme` makes previews, screenshot and UI tests deterministic.
 - **Not yet**: poll options (`pollopt` items) are not shown; collapsing a whole subtree beyond hiding replies, and
