@@ -87,5 +87,6 @@ jobs:
           else
             prerelease=()
             [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
-            gh release create "$TAG" dist/* --verify-tag --title "$TAG" --generate-notes "${prerelease[@]}"
+            notes="This APK shows on-device art only: cloud thumbnails need your own free Cloudflare token (see the README)."
+            gh release create "$TAG" dist/* --verify-tag --title "$TAG" --notes "$notes" --generate-notes "${prerelease[@]}"
           fi

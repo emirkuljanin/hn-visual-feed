@@ -4,6 +4,7 @@
 
     <!-- Story card -->
     <string name="feature_feed_open_story">Open story</string>
+    <string name="feature_feed_loading_story">Loading story</string>
 
     <!-- Load states -->
     <string name="feature_feed_loading">Loading stories</string>

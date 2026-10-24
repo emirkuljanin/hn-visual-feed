@@ -10,8 +10,24 @@ Stories, comments and pictures are stored locally, so the app works offline.
 | --- | --- | --- |
 | ![The feed: story cards with generated pictures](docs/images/feed.png) | ![A story with its header picture, metadata and first comments](docs/images/story.png) | ![An expanded comment thread](docs/images/thread.png) |
 
+Release and CI APKs show on-device art only: cloud pictures need your own free Cloudflare token (see
+[Optional: cloud thumbnails](#optional-cloud-thumbnails)).
+
 Built as a take-home assignment, one reviewed PR at a time; each commit message explains the decisions in it and
 what its review found.
+
+## Requirements map
+
+| Assignment requirement | Where it is met | Tests |
+| --- | --- | --- |
+| 1. Top story ids and details from the HN Firebase API; infinite scrolling | `:core:network` (`HnNetworkDataSource`), `TopStoriesRemoteMediator` + `OfflineFirstTopStoriesRepository` (Paging 3) in `:core:data` | `RetrofitHnNetworkDataSourceTest`, `TopStoriesRemoteMediatorTest`, `OfflineFirstTopStoriesRepositoryTest` |
+| 2. An AI thumbnail per story title (on-device preferred) | `:core:imagegen`: `OnDeviceImageGenerator` (MediaPipe embedder + `ProceduralArtist`) for every story, `CloudflareImageGenerator` (FLUX.1) as an upgrade, chained by `TieredThumbnailGenerator` | `ThumbnailGeneratorTest`, `OnDeviceImageGeneratorTest`, `ProceduralArtistTest`, `CloudflareImageGeneratorTest`, `MediaPipeOnDeviceTest` (device) |
+| "Think about caching results" | Each image is generated once and kept: WebP files plus a `thumbnails` table (`ThumbnailStore`, `ThumbnailPipeline`, WorkManager workers); the free cloud quota goes to the best-ranked stories and pauses at the limit | `ThumbnailPipelineTest`, `ThumbnailWorkersTest`, `ThumbnailStoreTest`, `UpgradePauseTest` |
+| 3. Stories and images persisted locally, offline across launches | `:core:database` (Room: stories, snapshot, thumbnails, comments) is the single source of truth; the UI only reads it | DAO tests, `MigrationTest` (device), `HnFeedAppTest.goingOffline_isShownOnBothScreens` |
+| 4. Compose + Material 3 paged cards: image, title, author, score, time | `:feature:feed` (`FeedScreen`, `StoryCard`), `:core:ui` (`StoryThumbnail`, story metadata) | `FeedScreenTest`, `FeedScreenScreenshotTest` |
+| 5. UI / ViewModel / Repository, Hilt, coroutines with the right dispatchers | `FeedViewModel`, `StoryViewModel`, repositories in `:core:data`, Hilt modules in each `di` package, injected `@IoDispatcher` / `@DefaultDispatcher` from `:core:common` | `FeedViewModelTest`, `StoryViewModelTest` (test dispatchers via `MainDispatcherRule`) |
+| 6. Testing | Unit, Robolectric, Compose UI, app-level and Roborazzi screenshot tests, plus instrumented tests (see [Testing](#testing)) | run by CI on every PR |
+| Extension: HN comments, fetched, structured and stored | `:feature:story`, `OfflineFirstStoryDetailsRepository` (comment tree as an adjacency list in Room, loaded by level) | `OfflineFirstStoryDetailsRepositoryTest`, `CommentDaoTest`, `StoryViewModelTest`, `StoryScreenTest` |
 
 ## Features
 
@@ -66,22 +82,29 @@ Background work (thumbnails) runs in WorkManager.
 flowchart LR
     app[":app<br/>navigation"] --> feed[":feature:feed"]
     app --> story[":feature:story"]
-    app --> ui
+    app --> ui[":core:ui"]
+    app --> ds[":core:designsystem"]
     feed --> data[":core:data"]
+    feed --> ui
+    feed --> ds
     story --> data
-    feed --> ui[":core:ui"]
     story --> ui
-    ui --> ds[":core:designsystem"]
+    story --> ds
+    ui --> ds
+    ui --> model[":core:model"]
     data --> network[":core:network"]
     data --> database[":core:database"]
     data --> imagegen[":core:imagegen"]
-    network --> model[":core:model"]
+    data --> model
     database --> model
-    imagegen --> model
 ```
 
-Every Android module may also use `:core:common` (injected dispatchers and clock); `:core:testing` holds the
-shared fakes for tests. The rules agents and humans follow are in [`AGENTS.md`](AGENTS.md).
+The graph shows every project dependency of the production code except `:core:common` (injected dispatchers and
+clock), which `:core:data`, `:core:database`, `:core:network` and `:core:imagegen` use; `:core:testing` holds the
+shared fakes and is only a test dependency. `:core:network` and `:core:imagegen` do not depend on `:core:model`:
+the network layer has its own DTOs, and the image generator deliberately knows nothing about stories, so it
+reports its own `ImageSource` enum, which `:core:data` maps to the model's `ThumbnailSource`. The rules agents
+and humans follow are in [`AGENTS.md`](AGENTS.md).
 
 ## Testing
 
@@ -218,7 +241,12 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   after process death) would re-rank the feed and throw away the user's scroll position. The snapshot's age is the
   earliest `fetched_at` among loaded rows, i.e. when its first page was written. Pull-to-refresh always refreshes.
 - **Page size 20 = one network batch**: each page is one parallel batch of item requests. `initialLoadSize`
-  matches it (the mediator fetches one page per refresh) and placeholders are off: 500 empty cards help nobody.
+  matches it (the mediator fetches one page per refresh).
+- **Placeholders are on, so list indices are ranks**: Room reloads around the scroll anchor after every write
+  (thumbnails, an opened story's refresh), and an index restored when the feed comes back (from a story, or after
+  process death) must still point at the same story. Without placeholders the reloaded list starts about ten items
+  above the anchor and the restored index lands that far down. Placeholders only span stories already loaded into
+  Room (the query's row count), not the ~500-id snapshot; one shows as a blank card until its page is read.
 - **Error contract**: the network layer throws only `IOException`s (`HnApiException` for unusable responses), so
   Retrofit and kotlinx.serialization types never leave `:core:network`. The mediator turns those and SQLite
   failures (e.g. a full disk) into `MediatorResult.Error`, which the UI gets as a load state instead of a crash.
@@ -255,8 +283,8 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
 - **Time**: "2 hours ago" uses the platform's localized relative time against `LocalClock`, which `MainActivity`
   sets to the same injected `Clock` the data layer uses; tests fix it. Small clock skew never shows "In 2 minutes".
 - **Screenshot tests** (Roborazzi on Robolectric, `src/test/screenshots`) cover every state in light and dark with
-  the static palette, a fixed clock and the UTC time zone. They were recorded on Windows; CI on Linux may need
-  re-recording (or a small diff threshold) because of font anti-aliasing.
+  the static palette, a fixed clock and the UTC time zone. They were recorded on Windows and verified unchanged on
+  the Linux CI runner.
 - **Robolectric on JDK 25**: the API 36 runtime needs `--add-exports java.base/jdk.internal.access`, and Compose's
   UI test library pulls Espresso 3.5 which breaks on it, so Espresso 3.7 is pinned. Both live in
   `hnfeed.android.roborazzi`.
@@ -267,10 +295,14 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   art in well under a second, offline and without quota, so no card waits on the network. `generateUpgrade` tries
   the better generators (cloud today; another generator slots into the list) in order and reports what happened:
   `Upgraded`, `NotApplicable` (no credentials, or the safety filter keeps the title on device), `Rejected`
-  (moderation or bad credentials: 4xx other than 408/429; a retry would fail the same way), `QuotaExhausted`
-  (HTTP 429 with Cloudflare's code 3036, the daily free allocation), `Unavailable` (no connection, DNS, 429
-  "capacity temporarily exceeded" or 502-504: nothing to do with the story) or `RetryLater` (timeout, HTTP 500,
-  unreadable image). The pipeline decides what each outcome means. Every generator returns the same 512x288 WebP.
+  (moderation or bad input: 4xx other than 401/403/404/408/429; a retry of this prompt would fail the same way),
+  `Misconfigured` (HTTP 401/403/404: a bad or revoked token or a wrong account id, the same for every story),
+  `QuotaExhausted` (HTTP 429 with Cloudflare's code 3036, the daily free allocation), `Unavailable` (no
+  connection, DNS, a connect timeout, a failed TLS handshake, a connection dropped before any answer, 429 "capacity
+  temporarily exceeded" or 502-504: nothing to do with the story) or `RetryLater` (a timeout waiting for the
+  image, a reset of the request's HTTP/2 stream other than REFUSED_STREAM/CANCEL, HTTP 500, a response cut off
+  midway, unreadable image). The pipeline decides what each outcome means. Every generator returns the same
+  512x288 WebP.
 - **Cloud: FLUX.1 [schnell] on Cloudflare Workers AI**. The plan was Pollinations' keyless API, but since October
   2026 it answers `402 Payment Required` for every new prompt, so a free keyless cloud option no longer exists.
   Cloudflare's free tier (10k neurons/day) covers about 170 images (about 58 neurons per 1024x1024 image at 4
@@ -324,6 +356,16 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
     backoff. Otherwise a provider outage would make the best-ranked stories give up for good.
   - `RetryLater` stops the run the same way but counts an attempt for that story; after 3 it is given up, so one
     story that always times out cannot block the queue.
+  - The line between the two is drawn per failure: nothing that happens before Cloudflare has the request (DNS,
+    connect, TLS) or that ends the whole connection (a dropped or closed connection, which on HTTP/2 can surface as
+    a REFUSED_STREAM or CANCEL stream reset) counts against a story. A timeout waiting for the image, or a reset of
+    just that request's stream with any other code, does: they may be about the prompt, and an uncounted one would
+    retry the same story forever. The cost: if Cloudflare's servers reset one request's stream for reasons that
+    have nothing to do with the prompt (stream resets are sent by the server inside TLS; a bad network drops whole
+    connections instead), the story can use up its 3 attempts and keep its preview. Detecting stream resets uses
+    OkHttp's `StreamResetException`, a public class in its internal package.
+  - `Misconfigured` stops the run without touching any story and without backoff or a timed pause: the stories
+    stay pending, and the next run (page load, app start) tries again, so fixing the token upgrades them.
   - `NotApplicable` and `Rejected` are final: the preview stays.
 - **State in Room, images on disk**: a separate `thumbnails` table (story id, file name, source, upgrade state,
   attempts) so story upserts never touch it; the feed query left-joins it. It is the first schema change:
@@ -331,9 +373,18 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   exported schemas). Rows cascade-delete with their story.
 - **Files**: WebP in `filesDir/thumbnails`, one name per version (`<id>-on_device.webp`, `<id>-cloud.webp`), so
   an upgrade never overwrites a file the UI may be reading and Coil's cache never shows a stale image. Writes go
-  to a temp file, synced to disk and renamed into place, so neither a crash nor a power loss leaves a half-written
-  image. The file is written before its row and the replaced file deleted after it, so a crash leaves at worst an
-  orphan file, never a row pointing at nothing.
+  to a temp file, synced (`fsync`) and renamed into place, so a crash cannot leave a half-written image under the
+  real name. This is not full power-loss safety: the directory is not synced, so a power cut right after a write
+  may lose the rename and leave a row whose file is missing (that card keeps its placeholder). The file is written
+  before its row and the replaced file deleted after it, so a crash leaves at worst an orphan file, never a row
+  pointing at nothing.
+- **Every thumbnail write reloads the feed**: the feed query joins `thumbnails`, so each preview and each upgrade
+  invalidates the feed `PagingSource`, about two reloads per story while images arrive. Acceptable here: Room
+  reloads only a small window around the scroll position (20 rows), Compose skips the cards whose story did not
+  change (keyed by id, stable and equal models), and the swap from placeholder to preview to cloud image comes
+  for free. Paging placeholders keep list indices absolute, so a reload never moves the scroll position (see
+  *Paging*). If it became a cost, the alternatives are batching writes (one transaction per batch, so one reload)
+  or taking thumbnails out of the join and merging a separate `Flow<Map<storyId, Thumbnail>>` into the cards.
 - **Database errors**: only a foreign-key failure means "the story was deleted meanwhile" and is skipped. Any other
   (e.g. a full disk) counts as a failure for that story, so a run cannot loop on it and, for upgrades, spend the
   quota on the same story again and again.

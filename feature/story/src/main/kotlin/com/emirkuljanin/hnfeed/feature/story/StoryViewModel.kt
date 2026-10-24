@@ -110,8 +110,9 @@ class StoryViewModel @AssistedInject constructor(
         refreshJob = viewModelScope.launch {
             refresh.value = try {
                 repository.refresh(storyId)
-                // A refresh replaces the first page of every level, so earlier "load more" failures are moot.
-                failed.value = emptySet()
+                // A refresh rewrites the top-level list, so an earlier top-level failure is moot. It never loads
+                // reply pages, so their failures stay, to be retried when the connection returns.
+                failed.update { it - storyId }
                 RefreshState.DONE
             } catch (e: IOException) {
                 RefreshState.FAILED

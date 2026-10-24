@@ -3,6 +3,7 @@ package com.emirkuljanin.hnfeed.core.imagegen.cloud
 import com.emirkuljanin.hnfeed.core.imagegen.ImageRequest
 import com.emirkuljanin.hnfeed.core.imagegen.ImageSource
 import com.emirkuljanin.hnfeed.core.imagegen.PermanentGenerationException
+import com.emirkuljanin.hnfeed.core.imagegen.ProviderMisconfiguredException
 import com.emirkuljanin.hnfeed.core.imagegen.ProviderUnavailableException
 import com.emirkuljanin.hnfeed.core.imagegen.QuotaExceededException
 import com.emirkuljanin.hnfeed.core.imagegen.THUMBNAIL_WIDTH
@@ -33,7 +34,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.internal.http2.ErrorCode
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
@@ -89,6 +93,24 @@ class CloudflareImageGeneratorTest {
     }
 
     @Test
+    fun generate_reportsAuthAndAccountErrorsAsMisconfigured_notAsARejectedPrompt() = runTest {
+        // A bad or revoked token (401, or 403 with Cloudflare's "Authentication error"), or a wrong account id (404),
+        // fails every request alike; it says nothing about the story.
+        server.enqueue(MockResponse(code = 401, body = "{}"))
+        server.enqueue(
+            MockResponse(
+                code = 403,
+                body = """{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}""",
+            ),
+        )
+        server.enqueue(MockResponse(code = 404, body = "{}"))
+
+        listOf(401, 403, 404).forEach { code ->
+            assertFailsWith<ProviderMisconfiguredException>("HTTP $code") { generator().generate(request) }
+        }
+    }
+
+    @Test
     fun generate_reportsTheDailyAllocationAsQuotaExceeded() = runTest {
         server.enqueue(
             MockResponse(
@@ -139,6 +161,106 @@ class CloudflareImageGeneratorTest {
                 "HTTP $code",
             )
         }
+    }
+
+    @Test
+    fun generate_reportsAConnectionDroppedBeforeAnyResponse_asTheProviderBeingUnavailable() = runTest {
+        // The server hangs up as soon as it accepts (a reset, a captive portal). OkHttp may retry on a new connection.
+        repeat(3) { server.enqueue(MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build()) }
+
+        assertFailsWith<ProviderUnavailableException> { generator().generate(request) }
+    }
+
+    @Test
+    fun generate_reportsAnHttp2ConnectionClosedBeforeAnyResponse_asTheProviderBeingUnavailable() = runTest {
+        // The server has read the request, then closes the whole connection cleanly (FIN, not RST) while the client
+        // waits for the answer. OkHttp fails the open stream with StreamResetException(CANCEL), which is about the
+        // connection, not this request.
+        MockWebServer().apply { protocols = listOf(Protocol.H2_PRIOR_KNOWLEDGE) }.use { h2Server ->
+            h2Server.start()
+            repeat(3) {
+                h2Server.enqueue(
+                    MockResponse.Builder()
+                        .onResponseStart(SocketEffect.CloseSocket(closeSocket = false, shutdownOutput = true))
+                        .build(),
+                )
+            }
+            val h2Client = OkHttpClient.Builder().protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE)).build()
+            val config = configured().copy(baseUrl = h2Server.url("/client/v4/").toString())
+
+            assertFailsWith<ProviderUnavailableException> { generator(config, h2Client).generate(request) }
+        }
+    }
+
+    @Test
+    fun generate_reportsAnUnreachableServer_asTheProviderBeingUnavailable() = runTest {
+        val config = configured()
+        server.close() // Connection refused.
+
+        assertFailsWith<ProviderUnavailableException> { generator(config).generate(request) }
+    }
+
+    @Test
+    fun generate_keepsAStreamResetOnAHealthyConnection_transient() = runTest {
+        // HTTP/2 (as Cloudflare speaks it): the server resets this request's stream; the connection stays up. That is
+        // this request's failure, so it must count against the story, or one such story would block the queue.
+        MockWebServer().apply { protocols = listOf(Protocol.H2_PRIOR_KNOWLEDGE) }.use { h2Server ->
+            h2Server.start()
+            repeat(3) {
+                h2Server.enqueue(
+                    MockResponse.Builder()
+                        .onRequestStart(SocketEffect.CloseStream(ErrorCode.INTERNAL_ERROR.httpCode))
+                        .build(),
+                )
+            }
+            val h2Client = OkHttpClient.Builder().protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE)).build()
+            val config = configured().copy(baseUrl = h2Server.url("/client/v4/").toString())
+
+            val error = assertFailsWith<IOException> { generator(config, h2Client).generate(request) }
+            assertFalse(error is ProviderUnavailableException, error.toString())
+        }
+    }
+
+    @Test
+    fun generate_reportsARefusedStream_asTheProviderBeingUnavailable() = runTest {
+        // REFUSED_STREAM turns away a stream before any processing; OkHttp retries it, then gives up.
+        MockWebServer().apply { protocols = listOf(Protocol.H2_PRIOR_KNOWLEDGE) }.use { h2Server ->
+            h2Server.start()
+            repeat(5) {
+                h2Server.enqueue(
+                    MockResponse.Builder()
+                        .onRequestStart(SocketEffect.CloseStream(ErrorCode.REFUSED_STREAM.httpCode))
+                        .build(),
+                )
+            }
+            val h2Client = OkHttpClient.Builder().protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE)).build()
+            val config = configured().copy(baseUrl = h2Server.url("/client/v4/").toString())
+
+            assertFailsWith<ProviderUnavailableException> { generator(config, h2Client).generate(request) }
+        }
+    }
+
+    @Test
+    fun generate_keepsATimeoutWaitingForTheAnswer_transient() = runTest {
+        // Connected and sent: a slow answer may be this request's own (a slow generation), so it counts.
+        server.enqueue(MockResponse.Builder().body("{}").headersDelay(5, TimeUnit.SECONDS).build())
+        val impatientClient = OkHttpClient.Builder().readTimeout(200, TimeUnit.MILLISECONDS).build()
+
+        val error = assertFailsWith<IOException> { generator(httpClient = impatientClient).generate(request) }
+        assertFalse(error is ProviderUnavailableException, error.toString())
+    }
+
+    @Test
+    fun generate_keepsAResponseCutOffMidway_transient() = runTest {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("{\"success\":true,\"result\":{\"image\":\"" + "A".repeat(64_000) + "\"}}")
+                .onResponseBody(SocketEffect.CloseSocket())
+                .build(),
+        )
+
+        val error = assertFailsWith<IOException> { generator().generate(request) }
+        assertFalse(error is ProviderUnavailableException, error.toString())
     }
 
     @Test

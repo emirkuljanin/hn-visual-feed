@@ -12,6 +12,7 @@ import com.emirkuljanin.hnfeed.core.data.testing.FakeThumbnailScheduler
 import com.emirkuljanin.hnfeed.core.data.testing.FakeUpgradePause
 import com.emirkuljanin.hnfeed.core.data.testing.InMemoryDatabaseTest
 import com.emirkuljanin.hnfeed.core.database.model.StoryEntity
+import com.emirkuljanin.hnfeed.core.database.model.UpgradeState
 import com.emirkuljanin.hnfeed.core.imagegen.UpgradeOutcome
 import com.emirkuljanin.hnfeed.core.model.StoryType
 import java.io.File
@@ -68,8 +69,11 @@ internal class ThumbnailWorkersTest : InMemoryDatabaseTest() {
     @Test
     fun upgradeWorker_succeeds_whenTheQueueIsWorkedOff() = runTest {
         feed(1)
+        pipeline.generatePreviews()
 
         assertEquals(Result.success(), worker<ThumbnailUpgradeWorker>().doWork())
+        assertEquals(listOf(1L), generator.upgradeRequests)
+        assertEquals(UpgradeState.DONE, database.thumbnailDao().get(1)?.upgradeState)
         assertNull(scheduler.upgradesScheduledAt)
     }
 
@@ -94,6 +98,18 @@ internal class ThumbnailWorkersTest : InMemoryDatabaseTest() {
         generator.upgradeOutcomes[1] = UpgradeOutcome.RetryLater("HTTP 503")
 
         assertEquals(Result.retry(), worker<ThumbnailUpgradeWorker>().doWork())
+    }
+
+    @Test
+    fun upgradeWorker_succeedsWithoutBackoff_whenTheProviderIsMisconfigured() = runTest {
+        feed(1)
+        pipeline.generatePreviews()
+        generator.upgradeOutcomes[1] = UpgradeOutcome.Misconfigured("HTTP 401")
+
+        assertEquals(Result.success(), worker<ThumbnailUpgradeWorker>().doWork())
+        assertEquals(listOf(1L), generator.upgradeRequests)
+        assertEquals(UpgradeState.PENDING, database.thumbnailDao().get(1)?.upgradeState)
+        assertNull(scheduler.upgradesScheduledAt)
     }
 
     @Test

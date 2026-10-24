@@ -19,8 +19,9 @@ internal annotation class ThumbnailDirectory
 /**
  * Thumbnail files on disk. Each version of a story's image has its own name (`<id>-on_device.webp`,
  * `<id>-cloud.webp`), so an upgrade never overwrites a file the UI may be reading, and image caches keyed by path
- * never show a stale picture. Writes are atomic (temp file synced to disk, then renamed), so neither a crash nor a
- * power loss can leave a half-written image behind. Main-safe: all I/O runs on the IO dispatcher.
+ * never show a stale picture. Writes go to a temp file that is synced (fsync) and then renamed, so a crash cannot
+ * leave a half-written image under the real name. The directory is not synced, so this is not full power-loss
+ * safety: a power cut right after a write may lose the rename. Main-safe: all I/O runs on the IO dispatcher.
  */
 internal class ThumbnailStore @Inject constructor(
     @ThumbnailDirectory private val directory: File,

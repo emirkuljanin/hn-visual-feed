@@ -31,7 +31,8 @@ import kotlinx.coroutines.sync.withPermit
  * 1. **Previews**: every story in the visible feed without a thumbnail gets on-device art, best rank first. Fast
  *    (well under a second each), offline, never refused: no card waits on the network or the quota.
  * 2. **Upgrades**: previews are replaced by a better image (cloud) best rank first, so a limited free quota goes to
- *    what the user sees. The run stops at the first quota error (and pauses upgrades until the reset), at an
+ *    what the user sees. The run stops at the first quota error (and pauses upgrades until the reset), at a
+ *    misconfigured provider (bad credentials: no story can succeed, the next scheduled run tries again), at an
  *    unreachable or busy provider, or at a transient failure of a story (which would likely hit the next ones too).
  *    Only the last counts against the story.
  *
@@ -76,6 +77,7 @@ internal class ThumbnailPipeline @Inject constructor(
                 batch.map { work -> async { work to generator.generateUpgrade(work.request()) } }.awaitAll()
             }
             var quotaExhausted = false
+            var misconfigured: UpgradeOutcome.Misconfigured? = null
             var retryLater = false
             for ((work, outcome) in outcomes) {
                 when (outcome) {
@@ -86,6 +88,8 @@ internal class ThumbnailPipeline @Inject constructor(
                     is UpgradeOutcome.Rejected -> setUpgradeState(work, UpgradeState.REJECTED)
 
                     is UpgradeOutcome.QuotaExhausted -> quotaExhausted = true
+
+                    is UpgradeOutcome.Misconfigured -> misconfigured = outcome
 
                     is UpgradeOutcome.Unavailable -> retryLater = true
 
@@ -99,6 +103,10 @@ internal class ThumbnailPipeline @Inject constructor(
                 val resumeAt = nextQuotaReset(clock.instant())
                 pause.pauseUntil(resumeAt)
                 return UpgradeRunResult.QuotaExhausted(resumeAt)
+            }
+            misconfigured?.let {
+                Log.w(TAG, "Upgrades stopped, the provider refuses every request: ${it.reason}")
+                return UpgradeRunResult.Misconfigured
             }
             if (retryLater) return UpgradeRunResult.RetryLater
         }
@@ -217,6 +225,9 @@ internal sealed interface UpgradeRunResult {
 
     /** Stopped at the provider's quota (or found upgrades paused): try again at [resumeAt]. */
     data class QuotaExhausted(val resumeAt: Instant) : UpgradeRunResult
+
+    /** Stopped because the provider refuses every request (bad credentials): try again on the next scheduled run. */
+    data object Misconfigured : UpgradeRunResult
 
     /** Stopped at a transient failure: try again with backoff. */
     data object RetryLater : UpgradeRunResult
