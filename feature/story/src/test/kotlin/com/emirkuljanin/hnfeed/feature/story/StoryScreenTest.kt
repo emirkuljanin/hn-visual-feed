@@ -3,8 +3,13 @@ package com.emirkuljanin.hnfeed.feature.story
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.WindowInsets
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasScrollAction
@@ -20,13 +25,18 @@ import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.unit.dp
+import androidx.core.graphics.Insets
+import androidx.core.view.WindowInsetsCompat
 import com.emirkuljanin.hnfeed.core.model.StoryType
 import com.emirkuljanin.hnfeed.core.testing.data.testStories
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 class StoryScreenTest {
@@ -201,6 +211,69 @@ class StoryScreenTest {
 
         state = StoryUiState(story = testStories.first { it.type == StoryType.JOB }, isRefreshing = false)
         composeRule.onNodeWithText("Comments").assertDoesNotExist()
+    }
+
+    /**
+     * In landscape the camera cutout is at the side. The story's text must start after it, as the feed's cards and
+     * the top bar's back button do, not scroll through the cutout band.
+     */
+    @Test
+    fun content_staysClearOfASideDisplayCutout() {
+        val cutout = 48.dp
+        composeRule.setContent {
+            val cutoutPx = with(LocalDensity.current) { cutout.roundToPx() }
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(cutoutPx, 0, 0, 0))
+                .build()
+            DeviceConfigurationOverride(DeviceConfigurationOverride.WindowInsets(insets)) {
+                StoryTestContent(loadedState(refreshFailed = true))
+            }
+        }
+
+        val back = composeRule.onNodeWithContentDescription("Back").getUnclippedBoundsInRoot()
+        assertTrue(back.left >= cutout, "Back button at ${back.left}")
+        fun assertClear(node: SemanticsNodeInteraction) {
+            val left = node.getUnclippedBoundsInRoot().left
+            assertTrue(left >= cutout + 16.dp, "Text starts at $left, inside the $cutout cutout plus margin")
+        }
+        assertClear(composeRule.onNodeWithText("Couldn't refresh. Showing saved comments."))
+        assertClear(composeRule.onNodeWithText(story.title))
+        val commentsTitle = hasText("Comments") and isHeading()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(commentsTitle)
+        assertClear(composeRule.onNode(commentsTitle))
+    }
+
+    /**
+     * A phone in landscape (QA: the story opened on nothing but its header image): the thumbnail goes beside the
+     * title, metadata and "Read article", so they are on screen from the start.
+     */
+    @Test
+    @Config(qualifiers = "w914dp-h411dp-land-420dpi")
+    fun inLandscape_theHeaderShowsTheTitleAndReadArticle_besideTheThumbnail() {
+        composeRule.setContent { StoryTestContent(loadedState()) }
+
+        composeRule.onNodeWithText(story.title, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Read article", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    /**
+     * A compact phone in landscape with its camera cutout at the side: the header is under 600 dp wide (592 dp), but
+     * the window is so short that a full-width image would fill it, so it goes wide too.
+     */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land")
+    fun inACompactLandscapeWindow_theHeaderShowsTheTitle() {
+        composeRule.setContent {
+            val cutoutPx = with(LocalDensity.current) { 48.dp.roundToPx() }
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(cutoutPx, 0, 0, 0))
+                .build()
+            DeviceConfigurationOverride(DeviceConfigurationOverride.WindowInsets(insets)) {
+                StoryTestContent(loadedState())
+            }
+        }
+
+        composeRule.onNodeWithText(story.title, useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun scrollTo(text: String, substring: Boolean = false) {

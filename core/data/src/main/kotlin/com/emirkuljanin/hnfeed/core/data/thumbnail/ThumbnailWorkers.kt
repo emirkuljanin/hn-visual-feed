@@ -30,8 +30,8 @@ class ThumbnailPreviewWorker @AssistedInject internal constructor(
 }
 
 /**
- * Phase 2: cloud upgrades for the feed, best rank first, until done, out of quota, refused for bad credentials or
- * failing transiently.
+ * Phase 2: cloud upgrades for the feed, best rank first, until done, out of quota, refused for bad credentials, the
+ * provider unreachable or a story failing transiently.
  */
 @HiltWorker
 class ThumbnailUpgradeWorker @AssistedInject internal constructor(
@@ -44,7 +44,13 @@ class ThumbnailUpgradeWorker @AssistedInject internal constructor(
     override suspend fun doWork(): Result = when (val result = pipeline.upgrade()) {
         UpgradeRunResult.Completed -> Result.success()
 
-        UpgradeRunResult.RetryLater -> Result.retry()
+        // Not Result.retry(): a run in backoff would hold every later upgrade request back behind it, and WorkManager
+        // counts the backoff per request, not per story, so it grows across stories up to its 5 h cap. A separate
+        // delayed job tries again instead.
+        is UpgradeRunResult.RetryLater -> {
+            scheduler.scheduleUpgradeRetry(result.retryIn)
+            Result.success()
+        }
 
         // Backoff would only repeat the refusal; the next schedule (page load, app start) tries again.
         UpgradeRunResult.Misconfigured -> Result.success()
@@ -56,7 +62,7 @@ class ThumbnailUpgradeWorker @AssistedInject internal constructor(
     }
 }
 
-/** Runs once the provider's quota has reset and puts upgrades back in their own queue. */
+/** Runs once the provider's quota has reset, or a while after it was unavailable, and puts upgrades back in their queue. */
 @HiltWorker
 class ThumbnailUpgradeResumeWorker @AssistedInject internal constructor(
     @Assisted context: Context,

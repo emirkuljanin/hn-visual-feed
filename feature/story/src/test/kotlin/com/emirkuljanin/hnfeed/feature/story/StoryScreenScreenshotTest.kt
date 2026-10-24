@@ -76,6 +76,11 @@ class StoryScreenScreenshotTest {
         StoryTestContent(StoryUiState(story = testStories.first { it.type == StoryType.JOB }, isRefreshing = false))
     }
 
+    /** A phone in landscape: the header's thumbnail beside its text, the first comments below. */
+    @Test
+    @Config(qualifiers = "+land")
+    fun story_landscape() = capture("story_landscape") { StoryTestContent(loadedState()) }
+
     @Test
     fun loading() = capture("loading") { StoryTestContent(StoryUiState()) }
 

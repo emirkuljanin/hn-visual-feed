@@ -3,7 +3,8 @@ package com.emirkuljanin.hnfeed.feature.story
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -49,6 +51,7 @@ import com.emirkuljanin.hnfeed.core.ui.PreviewTheme
 import com.emirkuljanin.hnfeed.core.ui.R as CoreUiR
 import com.emirkuljanin.hnfeed.core.ui.StoryLabels
 import com.emirkuljanin.hnfeed.core.ui.StoryThumbnail
+import com.emirkuljanin.hnfeed.core.ui.StoryThumbnailLayout
 import com.emirkuljanin.hnfeed.core.ui.storyByline
 import com.emirkuljanin.hnfeed.core.ui.storyCounts
 import com.emirkuljanin.hnfeed.core.ui.storyThumbnailKey
@@ -125,6 +128,7 @@ internal fun StoryScreen(
             .fillMaxSize()
             .padding(padding)
             .consumeWindowInsets(padding)
+        val layoutDirection = LocalLayoutDirection.current
         when {
             story != null -> Column(
                 modifier = Modifier
@@ -133,7 +137,12 @@ internal fun StoryScreen(
             ) {
                 // Above the list, not in it: an item inserted above the header would land off-screen, and TalkBack
                 // would never announce it.
-                val bannerModifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                val bannerModifier = Modifier.padding(
+                    start = padding.calculateStartPadding(layoutDirection) + 16.dp,
+                    end = padding.calculateEndPadding(layoutDirection) + 16.dp,
+                    top = 8.dp,
+                    bottom = 8.dp,
+                )
                 when {
                     uiState.isOffline -> OfflineBanner(bannerModifier)
 
@@ -161,7 +170,7 @@ internal fun StoryScreen(
                         onToggleReplies = onToggleReplies,
                         onLoadMore = onLoadMore,
                         onOpenLink = onOpenLink,
-                        bottomPadding = padding.calculateBottomPadding(),
+                        contentPadding = padding,
                     )
                 }
             }
@@ -196,11 +205,17 @@ private fun StoryContent(
     onToggleReplies: (Long) -> Unit,
     onLoadMore: (Long) -> Unit,
     onOpenLink: (String) -> Unit,
-    bottomPadding: androidx.compose.ui.unit.Dp,
+    contentPadding: PaddingValues,
 ) {
+    val layoutDirection = LocalLayoutDirection.current
+    // The Scaffold's side padding holds the display cutout and side navigation bar in landscape; the top is the bar's.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = bottomPadding + 16.dp),
+        contentPadding = PaddingValues(
+            start = contentPadding.calculateStartPadding(layoutDirection),
+            end = contentPadding.calculateEndPadding(layoutDirection),
+            bottom = contentPadding.calculateBottomPadding() + 16.dp,
+        ),
     ) {
         item(key = "header", contentType = "header") {
             StoryHeader(story = story, onOpenLink = onOpenLink)
@@ -264,48 +279,50 @@ private fun androidx.compose.foundation.lazy.LazyListScope.commentItems(
     }
 }
 
+/** In a wide layout (landscape, tablets) the thumbnail goes beside the text, so the story opens on its title. */
 @Composable
 private fun StoryHeader(story: Story, onOpenLink: (String) -> Unit) {
     Column {
-        StoryThumbnail(
-            thumbnail = story.thumbnail,
-            sharedElementKey = storyThumbnailKey(story.id),
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f),
+        StoryThumbnailLayout(
+            thumbnail = { StoryThumbnail(thumbnail = story.thumbnail, sharedElementKey = storyThumbnailKey(story.id)) },
+            details = { StoryHeaderDetails(story, onOpenLink) },
         )
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            StoryLabels(story)
-            Text(
-                text = story.title,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                text = storyByline(story),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = storyCounts(story),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            story.text?.let { text ->
-                HtmlText(html = text, onOpenLink = onOpenLink, style = MaterialTheme.typography.bodyLarge)
-            }
-            story.url?.let { url ->
-                FilledTonalButton(onClick = { onOpenLink(url) }) {
-                    Icon(
-                        painter = painterResource(R.drawable.feature_story_ic_open_in_new),
-                        contentDescription = null,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
-                    Text(stringResource(R.string.feature_story_read_article))
-                }
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun StoryHeaderDetails(story: Story, onOpenLink: (String) -> Unit) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        StoryLabels(story)
+        Text(
+            text = story.title,
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            text = storyByline(story),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = storyCounts(story),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        story.text?.let { text ->
+            HtmlText(html = text, onOpenLink = onOpenLink, style = MaterialTheme.typography.bodyLarge)
+        }
+        story.url?.let { url ->
+            FilledTonalButton(onClick = { onOpenLink(url) }) {
+                Icon(
+                    painter = painterResource(R.drawable.feature_story_ic_open_in_new),
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text(stringResource(R.string.feature_story_read_article))
             }
         }
-        HorizontalDivider()
     }
 }
 

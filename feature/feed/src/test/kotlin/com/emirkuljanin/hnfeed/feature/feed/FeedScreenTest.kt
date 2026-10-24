@@ -1,13 +1,19 @@
 package com.emirkuljanin.hnfeed.feature.feed
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.WindowInsets
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -17,6 +23,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.core.graphics.Insets
+import androidx.core.view.WindowInsetsCompat
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingSource
@@ -32,6 +43,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/** Robolectric's medium phone (411 x 914 dp) turned to landscape. */
+private const val LANDSCAPE_PHONE = "w914dp-h411dp-land-420dpi"
 
 @RunWith(RobolectricTestRunner::class)
 class FeedScreenTest {
@@ -230,6 +245,67 @@ class FeedScreenTest {
         composeRule.onNode(hasScrollAction()).performScrollToIndex(1)
 
         composeRule.onNodeWithContentDescription("Loading story").assertIsDisplayed()
+    }
+
+    /**
+     * A phone in landscape (QA: one card per screen, the title below the fold): the thumbnail goes beside the text,
+     * so a card's title and metadata are on screen together with the next card.
+     */
+    @Test
+    @Config(qualifiers = LANDSCAPE_PHONE)
+    fun inLandscape_aCardShowsItsTitleAndMetadata_withTheNextCardOnScreen() {
+        composeRule.setContent { FeedTestContent(feed(stories = testStories)) }
+
+        // Unmerged: the card's merged node holds all its text and is "displayed" as soon as any of it is.
+        composeRule.onNodeWithText(testStories[0].title, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("412 points · 128 comments", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText(testStories[1].title, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    /**
+     * A compact phone in landscape with its camera cutout at the side: the cards are under 600 dp wide (560 dp),
+     * but the window is so short that a full-width image would fill it, so they go wide too.
+     */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land")
+    fun inACompactLandscapeWindow_aCardShowsItsTitleAndCounts() {
+        composeRule.setContent { WithStartCutout(48.dp) { FeedTestContent(feed(stories = testStories)) } }
+
+        composeRule.onNodeWithText(testStories[0].title, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("412 points · 128 comments", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    /** Phones in portrait keep the full-width image above the text: the title starts at the card's padding. */
+    @Test
+    @Config(qualifiers = "w411dp-h914dp-port")
+    fun inPortrait_theTitleIsBelowTheThumbnail_notBesideIt() {
+        composeRule.setContent { FeedTestContent(feed(stories = testStories)) }
+
+        val title = composeRule.onNodeWithText(testStories[0].title, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(32f, title.left.value, absoluteTolerance = 0.5f, "List padding plus card padding")
+    }
+
+    /** Placeholders keep the wide layout too, so a page arriving in landscape does not move the list. */
+    @Test
+    @Config(qualifiers = LANDSCAPE_PHONE)
+    fun inLandscape_aPlaceholderIsAsTallAsACard() {
+        val pager = Pager(PagingConfig(pageSize = 1, initialLoadSize = 1, prefetchDistance = 1)) {
+            HalfLoadedPagingSource(loaded = testStories.take(1), notLoadedYet = 1)
+        }
+        composeRule.setContent { FeedTestContent(pager.flow) }
+
+        val card = composeRule.onNode(hasClickAction() and hasText(testStories[0].title)).getUnclippedBoundsInRoot()
+        val placeholder = composeRule.onNodeWithContentDescription("Loading story").getUnclippedBoundsInRoot()
+        assertEquals(card.height.value, placeholder.height.value, absoluteTolerance = 0.01f)
+    }
+
+    @Composable
+    private fun WithStartCutout(width: Dp, content: @Composable () -> Unit) {
+        val widthPx = with(LocalDensity.current) { width.roundToPx() }
+        val insets = WindowInsetsCompat.Builder()
+            .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(widthPx, 0, 0, 0))
+            .build()
+        DeviceConfigurationOverride(DeviceConfigurationOverride.WindowInsets(insets), content)
     }
 
     /** Returns [loaded] followed by [notLoadedYet] placeholders, whose page never arrives. */

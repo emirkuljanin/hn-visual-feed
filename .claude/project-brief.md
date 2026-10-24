@@ -39,9 +39,10 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   table (story upserts never clobber images). Evict rows/files for stories no longer in the snapshot after N days.
 - **Generation scheduling**: unique WorkManager jobs. Previews: every visible story without a thumbnail, in rank
   order, bounded concurrency; when done they enqueue upgrades. Upgrades: `PENDING` rows in rank order; stop at the
-  quota (persisted pause + a separate delayed resume job), when the provider is unreachable or busy (backoff, not
-  counted) or at a per-story transient error (backoff, give up after 3); cards observe Room and swap
-  placeholder → preview → cloud image.
+  quota (persisted pause + a separate delayed resume job), or when the provider is unreachable or busy (not counted)
+  or at a per-story transient error (counted at most every 15 min, give up after 3), both with a separate delayed
+  retry job (as long as the failures have lasted, 15 min to 4 h); cards observe Room and swap placeholder → preview
+  → cloud image.
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
   Room 3 (platform SQLite driver), Paging 3, Navigation 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
   stable versions.

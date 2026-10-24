@@ -46,11 +46,14 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
     /**
      * Room runs on the test's scheduler. `asSnapshot` decides the feed is settled with a 1 ms debounce in virtual
      * time; with Room's invalidation on its own threads, that could pass after the mediator's write and before the
-     * write had reloaded the page, returning an empty or short feed under load. Every test must use
-     * `runTest(testDispatcher)`: otherwise Room's work waits on a scheduler nobody advances and the test hangs.
+     * write had reloaded the page, returning an empty or short feed under load. Every test therefore runs on this
+     * dispatcher through [runFeedTest]: under a plain `runTest {}` Room's work would run on a scheduler the test does
+     * not advance, and the test fails ("Detected use of different schedulers").
      */
     private val testDispatcher = StandardTestDispatcher()
     override val queryContext: CoroutineContext = testDispatcher
+
+    private fun runFeedTest(testBody: suspend TestScope.() -> Unit) = runTest(testDispatcher, testBody = testBody)
 
     private val network = FakeHnNetworkDataSource()
     private val thumbnailScheduler = FakeThumbnailScheduler()
@@ -67,7 +70,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
     }
 
     @Test
-    fun topStories_loadsTheFeedFromTheNetwork_asDomainModels() = runTest(testDispatcher) {
+    fun topStories_loadsTheFeedFromTheNetwork_asDomainModels() = runFeedTest {
         network.ranking = listOf(8, 3, 5)
         network.addStories(8, 3, 5)
 
@@ -85,7 +88,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
     }
 
     @Test
-    fun topStories_exposeTheThumbnailFile_onceItExists() = runTest(testDispatcher) {
+    fun topStories_exposeTheThumbnailFile_onceItExists() = runFeedTest {
         network.ranking = listOf(8, 3)
         network.addStories(8, 3)
         repository.topStories().asSnapshot()
@@ -108,7 +111,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
     }
 
     @Test
-    fun topStories_pagesThroughTheWholeSnapshot_inRankOrder() = runTest(testDispatcher) {
+    fun topStories_pagesThroughTheWholeSnapshot_inRankOrder() = runFeedTest {
         val ranking = (45L downTo 1L).toList()
         network.ranking = ranking
         network.addStories(*ranking.toLongArray())
@@ -119,7 +122,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
     }
 
     @Test
-    fun topStories_keepPaging_pastAPageInWhichNothingIsShowable() = runTest(testDispatcher) {
+    fun topStories_keepPaging_pastAPageInWhichNothingIsShowable() = runFeedTest {
         val ranking = (1L..45L).toList()
         network.ranking = ranking
         network.addStories(*ranking.toLongArray())
@@ -138,7 +141,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
      * Opening a story writes its row, which invalidates the feed: the reloaded list must keep every story at its index.
      */
     @Test
-    fun topStories_keepEachStoryAtItsIndex_whenAWriteInvalidatesTheFeed() = runTest(testDispatcher) {
+    fun topStories_keepEachStoryAtItsIndex_whenAWriteInvalidatesTheFeed() = runFeedTest {
         val ranking = (101L..160L).toList()
         cacheLoadedSnapshot(ranking)
         val presenter = present(repository.topStories())
@@ -154,7 +157,7 @@ internal class OfflineFirstTopStoriesRepositoryTest : InMemoryDatabaseTest() {
 
     /** After process death a new Pager starts at the top, but the restored index must still reach its story. */
     @Test
-    fun topStories_reachEveryCachedIndex_fromANewPager() = runTest(testDispatcher) {
+    fun topStories_reachEveryCachedIndex_fromANewPager() = runFeedTest {
         val ranking = (101L..160L).toList()
         cacheLoadedSnapshot(ranking)
         val presenter = present(repository.topStories())

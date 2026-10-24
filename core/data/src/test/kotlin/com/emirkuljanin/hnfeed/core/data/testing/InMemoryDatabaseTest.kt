@@ -36,7 +36,9 @@ internal abstract class InMemoryDatabaseTest {
     /**
      * Where Room runs queries and its invalidation tracker; `null` keeps Room's own threads. A test that waits for
      * Room-driven updates with virtual time (e.g. `asSnapshot` under `runTest`) passes its test dispatcher here, so
-     * those updates run on the scheduler the test advances instead of racing it.
+     * those updates run on the scheduler the test advances instead of racing it. A subclass that passes a dispatcher
+     * must run every test with `runTest(thatDispatcher)`: under another scheduler Room's work is never advanced, and
+     * kotlinx-coroutines-test fails the test ("Detected use of different schedulers").
      */
     protected open val queryContext: CoroutineContext? = null
 
