@@ -16,6 +16,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,9 @@ internal class ThumbnailPipelineTest : InMemoryDatabaseTest() {
 
     private fun pipeline(clock: Clock = this.clock) =
         ThumbnailPipeline(thumbnailDao, storyDao, generator, store, pause, clock)
+
+    /** A pipeline whose clock is [offset] later than [now]. */
+    private fun pipelineAt(offset: Duration) = pipeline(Clock.offset(clock, offset))
 
     @Test
     fun generatePreviews_givesEveryFeedStoryOnDeviceArt_bestRankFirst() = runTest {
@@ -181,7 +185,7 @@ internal class ThumbnailPipelineTest : InMemoryDatabaseTest() {
         generator.upgradeOutcomes[2] = UpgradeOutcome.Unavailable("Unable to resolve host")
 
         repeat(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS + 1) {
-            assertEquals(UpgradeRunResult.RetryLater, pipeline.upgrade())
+            assertIs<UpgradeRunResult.RetryLater>(pipeline.upgrade())
         }
 
         assertEquals(listOf(1L, 2L), generator.upgradeRequests.distinct(), "Story 3 waits for the next run")
@@ -190,6 +194,83 @@ internal class ThumbnailPipelineTest : InMemoryDatabaseTest() {
             assertEquals(0, thumbnailDao.get(it)!!.upgradeAttempts)
         }
     }
+
+    @Test
+    fun upgrade_whenTheProviderIsUnavailable_besideAStoryFailure_countsOnlyTheStory() = runTest {
+        feed(loaded = listOf(1, 2))
+        pipeline.generatePreviews()
+        generator.upgradeOutcomes[1] = UpgradeOutcome.RetryLater("timeout")
+        generator.upgradeOutcomes[2] = UpgradeOutcome.Unavailable("Unable to resolve host")
+
+        assertIs<UpgradeRunResult.RetryLater>(pipeline.upgrade())
+
+        assertEquals(1, thumbnailDao.get(1)!!.upgradeAttempts)
+        assertEquals(0, thumbnailDao.get(2)!!.upgradeAttempts)
+    }
+
+    /**
+     * The retry delay follows how long the provider has been failing, not how many runs failed: page loads during a
+     * short outage start many runs within a minute, and that must not push the background retry to hours.
+     */
+    @Test
+    fun upgrade_manyFailedRunsWithinAMinute_retryIn15Minutes() = runTest {
+        failUpgrades()
+
+        val delays = (0L..4L).map { retryIn(atSecond = it * 15) }
+
+        assertEquals(List(5) { Duration.ofMinutes(15) }, delays)
+    }
+
+    /** A provider that stays down is asked less and less often, up to 4 hours apart. */
+    @Test
+    fun upgrade_aFailureLongIntoTheStreak_retriesAfterAsLongAgain_upTo4Hours() = runTest {
+        failUpgrades()
+        retryIn(atSecond = 0)
+
+        assertEquals(Duration.ofHours(2), retryIn(atSecond = Duration.ofHours(2).seconds))
+        assertEquals(Duration.ofHours(4), retryIn(atSecond = Duration.ofHours(9).seconds))
+    }
+
+    /** Once a run gets through, the next failure starts a new streak. */
+    @Test
+    fun upgrade_aRunThatGetsThrough_endsTheStreak() = runTest {
+        failUpgrades()
+        retryIn(atSecond = 0)
+        generator.upgradeOutcomes.clear()
+        assertEquals(UpgradeRunResult.Completed, pipelineAt(Duration.ofHours(2)).upgrade())
+
+        feed(loaded = listOf(2))
+        pipelineAt(Duration.ofHours(2)).generatePreviews()
+        generator.upgradeOutcomes[2] = UpgradeOutcome.Unavailable("Unable to resolve host")
+        assertEquals(Duration.ofMinutes(15), retryIn(atSecond = Duration.ofHours(3).seconds))
+    }
+
+    /**
+     * A run in which the provider answered for some stories got through, even if it then stopped at another story's
+     * failure: the provider is back, so the next retry is 15 minutes away, not as long as the old outage lasted.
+     */
+    @Test
+    fun upgrade_aRunWithSomeUpgrades_thatStopsAtAStorysFailure_startsANewStreak() = runTest {
+        feed(loaded = listOf(1, 2))
+        pipeline.generatePreviews()
+        pause.failingSince = now.minus(Duration.ofHours(3))
+        generator.upgradeOutcomes[2] = UpgradeOutcome.RetryLater("timeout")
+
+        val result = pipeline.upgrade()
+
+        assertEquals(UpgradeRunResult.RetryLater(retryIn = Duration.ofMinutes(15)), result)
+        assertEquals(now, pause.failingSince)
+        assertEquals(UpgradeState.DONE, thumbnailDao.get(1)!!.upgradeState)
+    }
+
+    private suspend fun failUpgrades() {
+        feed(loaded = listOf(1))
+        pipeline.generatePreviews()
+        generator.upgradeOutcomes[1] = UpgradeOutcome.Unavailable("Unable to resolve host")
+    }
+
+    private suspend fun retryIn(atSecond: Long): Duration =
+        assertIs<UpgradeRunResult.RetryLater>(pipelineAt(Duration.ofSeconds(atSecond)).upgrade()).retryIn
 
     @Test
     fun upgrade_whenTheStoryIsDeletedMeanwhile_movesOn() = runTest {
@@ -209,14 +290,69 @@ internal class ThumbnailPipelineTest : InMemoryDatabaseTest() {
         pipeline.generatePreviews()
         generator.upgradeOutcomes[1] = UpgradeOutcome.RetryLater("timeout")
 
-        repeat(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS - 1) {
-            assertEquals(UpgradeRunResult.RetryLater, pipeline.upgrade())
+        // Each run one failure spacing after the one before, so every failure counts.
+        fun afterSpacings(runs: Int) = pipelineAt(ThumbnailPipeline.MIN_FAILURE_SPACING.multipliedBy(runs.toLong()))
+        repeat(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS - 1) { run ->
+            assertIs<UpgradeRunResult.RetryLater>(afterSpacings(run).upgrade())
         }
         assertEquals(UpgradeState.PENDING, thumbnailDao.get(1)!!.upgradeState)
-        assertEquals(UpgradeRunResult.RetryLater, pipeline.upgrade())
+        assertIs<UpgradeRunResult.RetryLater>(afterSpacings(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS - 1).upgrade())
 
         assertEquals(UpgradeState.GAVE_UP, thumbnailDao.get(1)!!.upgradeState)
+        assertEquals(UpgradeRunResult.Completed, afterSpacings(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS).upgrade())
+    }
+
+    /**
+     * Every page load starts a run, so a short outage must not use up a story's attempts in seconds: failures are
+     * counted at most once per spacing, and the run still stops.
+     */
+    @Test
+    fun upgrade_countsAStorysTransientFailures_atMostOncePerSpacing() = runTest {
+        feed(loaded = listOf(1))
+        pipeline.generatePreviews()
+        generator.upgradeOutcomes[1] = UpgradeOutcome.RetryLater("HTTP 500")
+
+        repeat(3) { assertIs<UpgradeRunResult.RetryLater>(pipeline.upgrade()) }
+
+        assertEquals(3, generator.upgradeRequests.size, "Each run stops at the failure")
+        assertEquals(1, thumbnailDao.get(1)!!.upgradeAttempts)
+        assertEquals(UpgradeState.PENDING, thumbnailDao.get(1)!!.upgradeState)
+    }
+
+    /**
+     * A last failure stored in the future (the device clock was ahead, then set back) must not stop the counting:
+     * otherwise the story would never be counted again and never given up.
+     */
+    @Test
+    fun upgrade_countsAFailure_whenTheLastOneIsStoredInTheFuture() = runTest {
+        feed(loaded = listOf(1))
+        pipeline.generatePreviews()
+        thumbnailDao.updateUpgrade(1, UpgradeState.PENDING, attempts = 1, updatedAt = now.plus(Duration.ofDays(1)))
+        generator.upgradeOutcomes[1] = UpgradeOutcome.RetryLater("timeout")
+
+        assertIs<UpgradeRunResult.RetryLater>(pipeline.upgrade())
+
+        assertEquals(2, thumbnailDao.get(1)!!.upgradeAttempts)
+    }
+
+    /**
+     * An upgrade that cannot be stored was already paid for, so its failures count every time (no spacing): at most
+     * 3 paid generations for the story, and each run stops instead of trying it again.
+     */
+    @Test
+    fun upgrade_whenTheUpgradeCannotBeStored_countsEveryFailure_andGivesUpAfterTheLimit() = runTest {
+        feed(loaded = listOf(1))
+        pipeline.generatePreviews()
+        // A file where the directory should be: every write fails.
+        File(folder.root, "thumbnails").deleteRecursively()
+        File(folder.root, "thumbnails").writeText("not a directory")
+
+        repeat(ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS) { assertIs<UpgradeRunResult.RetryLater>(pipeline.upgrade()) }
+
+        assertEquals(List(3) { 1L }, generator.upgradeRequests, "One paid request per run")
+        assertEquals(UpgradeState.GAVE_UP, thumbnailDao.get(1)!!.upgradeState)
         assertEquals(UpgradeRunResult.Completed, pipeline.upgrade())
+        assertEquals(3, generator.upgradeRequests.size)
     }
 
     @Test

@@ -63,6 +63,11 @@ data class ThumbnailWork(
     /** The current image, if any (for an upgrade, the preview it replaces). */
     @ColumnInfo(name = "file_name") val fileName: String?,
     @ColumnInfo(name = "upgrade_attempts") val upgradeAttempts: Int,
+    /**
+     * When the row was last written (`null` for a story without a thumbnail). For a pending upgrade with attempts,
+     * that is when its last failure was counted: every other upgrade write leaves the pending state.
+     */
+    @ColumnInfo(name = "updated_at") val updatedAt: Instant?,
 )
 
 /** A feed row: the story and, once generated, its thumbnail. */

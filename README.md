@@ -278,6 +278,16 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   because the snapshot is fresh leaves the scroll position alone.
 - **Pull-to-refresh** shows the mediator refresh (network), not the combined state, so it does not flicker on
   local Room reloads.
+- **Wide layouts**: from 600 dp of width (a phone in landscape, a tablet) a card's thumbnail takes the start third
+  of the card and the text sits beside it; otherwise a full-width 16:9 image would fill the screen and push the title
+  below the fold. The same happens in a short window, where the full-width image would be taller than half the
+  window: a compact phone in landscape (360 x 640 dp, whose cards are under 600 dp once the camera cutout is taken
+  off) or split screen. Phones in portrait stay as they were (their image is about a quarter of the window). The
+  story header does the same, so a story opens on its title. Both use `StoryThumbnailLayout` in
+  `:core:ui`, which decides while measuring (a custom `Layout`): both shapes are one composition and no list item pays
+  for a `BoxWithConstraints` subcomposition; placeholders use the same layout and keep their height, and the
+  thumbnail is 16:9 in both shapes, so the shared transition is a plain resize. Still one `LazyColumn`, so keys,
+  placeholders and the restored scroll position work as in portrait.
 - **Safe links**: only `http(s)` URLs are kept from the API; opening one is guarded because a device without a
   browser would otherwise crash. A card opens the story screen; the article opens from there.
 - **Time**: "2 hours ago" uses the platform's localized relative time against `LocalClock`, which `MainActivity`
@@ -352,10 +362,35 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
     allowance resets. The pause is persisted, so runs started meanwhile end without calling the API, and a separate
     delayed job (KEEP, outside the upgrade queue, so requests during the pause never pile up behind it) restarts
     upgrades after the reset. Until then cards keep their previews; nothing is lost.
-  - `Unavailable` stops the run without counting against any story, and WorkManager retries with exponential
-    backoff. Otherwise a provider outage would make the best-ranked stories give up for good.
-  - `RetryLater` stops the run the same way but counts an attempt for that story; after 3 it is given up, so one
-    story that always times out cannot block the queue.
+  - `Unavailable` stops the run without counting against any story (otherwise a provider outage would make the
+    best-ranked stories give up for good). `RetryLater` stops it too, but counts an attempt for that story, at most
+    one per 15 minutes; after 3 it is given up, so one story that always times out slows the queue for about half an
+    hour (see the trade-off below). The spacing matters because every page load starts a run, and each run
+    tries the best-ranked pending stories first: without it, a few page loads during a short outage would use up
+    their attempts within seconds.
+  - Either way the run succeeds and a separate delayed job starts upgrades again after as long as the failures have
+    been going on, at least 15 minutes and at most 4 hours: failures 0, 15, 30, 60 and 120 minutes into an outage
+    retry after 15, 15, 30, 60 and 120 minutes, so the gaps roughly double. When the streak began is persisted next
+    to the quota pause. The streak ends when a run finishes for any other reason (worked off, quota, refused
+    credentials), or when the provider answered for some story (an image or a refusal) before another story's
+    failure stopped the run. Short at first because most outages are brief; growing, so a provider that stays
+    unreachable from this network costs about 6 background runs a day instead of one every 15 minutes. Based on time,
+    not on the number of failed runs, because page loads and app starts also start runs: five failed runs while the
+    user scrolls during a short outage still mean a 15-minute retry. The job is enqueued with REPLACE, so the latest
+    failure decides its delay and a long retry left over from an earlier outage cannot hold back a new one. Not
+    WorkManager's retry: a run in exponential backoff stays at the head of the upgrade queue, and WorkManager counts
+    its backoff per request, not per story, so after a long outage, a captive portal or a provider that keeps timing
+    out, every new request would wait behind it for up to 5 hours, even once the provider is back.
+  - Trade-off, a story that always times out: its 3 counted attempts must be 15 minutes apart, and every run in
+    between asks for it first and waits for its timeout (up to 30 seconds) before stopping. Runs request two stories
+    at a time, so only the one requested alongside it is upgraded per run until it is given up, about half an hour
+    after its first counted failure. Accepted because the spacing is what keeps the top
+    stories from being given up during short provider hiccups; skipping stories that are cooling down would spread
+    attempts over more stories during provider-wide outages and add complexity.
+  - Trade-off, the streak counts idle time: it also grows while nothing is tried (e.g. offline for hours after a
+    failure), so the first failure after a long offline period can schedule the background retry up to 4 hours out
+    instead of 15 minutes. Accepted because page loads and app starts retry at once in the foreground anyway, and it
+    avoids a second persisted timestamp.
   - The line between the two is drawn per failure: nothing that happens before Cloudflare has the request (DNS,
     connect, TLS) or that ends the whole connection (a dropped or closed connection, which on HTTP/2 can surface as
     a REFUSED_STREAM or CANCEL stream reset) counts against a story. A timeout waiting for the image, or a reset of
@@ -386,8 +421,10 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   *Paging*). If it became a cost, the alternatives are batching writes (one transaction per batch, so one reload)
   or taking thumbnails out of the join and merging a separate `Flow<Map<storyId, Thumbnail>>` into the cards.
 - **Database errors**: only a foreign-key failure means "the story was deleted meanwhile" and is skipped. Any other
-  (e.g. a full disk) counts as a failure for that story, so a run cannot loop on it and, for upgrades, spend the
-  quota on the same story again and again.
+  (e.g. a full disk) counts as a failure for that story. A preview run then skips the story; an upgrade run stops
+  like at any transient failure, and the attempt is counted every time (not spaced like the provider's failures:
+  the image was already paid for), so at most 3 paid images per story are lost and the quota is not spent on it
+  again and again.
 - **Cleanup**: after the preview pass, stories that are no longer in the snapshot and were fetched over 7 days ago
   are deleted (their rows go with them) and files no row references are swept; files younger than 10 minutes are
   spared, since their row may not be committed yet.
@@ -401,7 +438,8 @@ Robolectric, paging-testing, work-testing, Hilt testing, Compose UI tests, Robor
   (ordering, idempotence, failures that must not loop, stories deleted mid-generation, quota pause and resume,
   unavailable vs. per-story failures, give-up after 3 attempts, cleanup). Workers are tested with
   `TestListenableWorkerBuilder`, the scheduler against WorkManager's test implementation (`TestDriver`: network
-  constraint, quota-resume delay, unique-work policies); the store and the pause have their own tests.
+  constraint, quota-resume and outage-retry delays, unique-work policies, a request after an outage not waiting
+  for a backoff); the store and the pause have their own tests.
 
 ### On-device diffusion (investigated, dropped)
 

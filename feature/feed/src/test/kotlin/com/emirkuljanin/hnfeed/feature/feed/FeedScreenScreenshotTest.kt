@@ -1,8 +1,15 @@
 package com.emirkuljanin.hnfeed.feature.feed
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
+import com.emirkuljanin.hnfeed.core.testing.data.TEST_NOW
 import com.emirkuljanin.hnfeed.core.testing.data.testStories
+import com.emirkuljanin.hnfeed.core.ui.PreviewTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -54,6 +61,23 @@ class FeedScreenScreenshotTest {
     @Test
     fun feed_appendFailed() = capture("feed_append_failed") {
         FeedTestContent(feed(stories = testStories.takeLast(1), append = error))
+    }
+
+    /** A phone in landscape: thumbnails beside the text, so more than one story fits on the screen. */
+    @Test
+    @Config(qualifiers = "+land")
+    fun feed_landscape() = capture("feed_landscape") { FeedTestContent(feed(stories = testStories)) }
+
+    /** A wide card above a placeholder: the placeholder keeps the card's shape and height. */
+    @Test
+    @Config(qualifiers = "+land")
+    fun cards_landscape() = capture("cards_landscape") {
+        PreviewTheme(now = TEST_NOW) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                StoryCard(story = testStories[0], onClick = {})
+                StoryCardPlaceholder()
+            }
+        }
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.emirkuljanin.hnfeed.core.imagegen.ImageSource
 import com.emirkuljanin.hnfeed.core.imagegen.ThumbnailGenerator
 import com.emirkuljanin.hnfeed.core.imagegen.UpgradeOutcome
 import java.io.IOException
+import java.time.Duration
 import java.time.Instant
 
 /** Records schedule calls instead of talking to WorkManager. */
@@ -17,6 +18,10 @@ internal class FakeThumbnailScheduler : ThumbnailScheduler {
     var upgradesScheduled = 0
         private set
     var upgradesScheduledAt: Instant? = null
+        private set
+    var upgradeRetries = 0
+        private set
+    var upgradeRetryDelay: Duration? = null
         private set
 
     override fun schedule() {
@@ -30,13 +35,25 @@ internal class FakeThumbnailScheduler : ThumbnailScheduler {
     override fun scheduleUpgradesAt(resumeAt: Instant) {
         upgradesScheduledAt = resumeAt
     }
+
+    override fun scheduleUpgradeRetry(after: Duration) {
+        upgradeRetries++
+        upgradeRetryDelay = after
+    }
 }
 
-internal class FakeUpgradePause(var resumesAt: Instant? = null) : UpgradePause {
+internal class FakeUpgradePause(var resumesAt: Instant? = null, var failingSince: Instant? = null) : UpgradePause {
     override suspend fun resumesAt(): Instant? = resumesAt
 
     override suspend fun pauseUntil(resumeAt: Instant) {
         resumesAt = resumeAt
+    }
+
+    override suspend fun recordFailure(now: Instant): Instant =
+        failingSince?.takeIf { it <= now } ?: now.also { failingSince = it }
+
+    override suspend fun clearFailures() {
+        failingSince = null
     }
 }
 

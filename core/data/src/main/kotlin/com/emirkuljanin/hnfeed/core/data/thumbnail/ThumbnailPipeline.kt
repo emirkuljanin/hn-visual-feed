@@ -34,7 +34,8 @@ import kotlinx.coroutines.sync.withPermit
  *    what the user sees. The run stops at the first quota error (and pauses upgrades until the reset), at a
  *    misconfigured provider (bad credentials: no story can succeed, the next scheduled run tries again), at an
  *    unreachable or busy provider, or at a transient failure of a story (which would likely hit the next ones too).
- *    Only the last counts against the story.
+ *    Only the last counts against the story, at most once per [MIN_FAILURE_SPACING]; an upgrade that cannot be
+ *    stored counts every time, since it was already paid for.
  *
  * The database is written after the file, and the replaced file deleted after the database; a crash in between
  * leaves an orphan file that cleanup removes, never a row pointing at a missing file.
@@ -66,10 +67,29 @@ internal class ThumbnailPipeline @Inject constructor(
         }
     }
 
-    /** Returns whether the upgrade queue was worked off, or why it stopped. */
+    /**
+     * Returns whether the upgrade queue was worked off, or why it stopped. The longer runs have been stopping at
+     * transient failures, the longer the next retry waits ([upgradeRetryDelay]). A run that gets through ends that
+     * streak: one that ends any other way, or in which the provider answered for a story (an image or a refusal)
+     * before the run stopped.
+     */
     suspend fun upgrade(): UpgradeRunResult {
         val resumesAt = pause.resumesAt()
         if (resumesAt != null && clock.instant() < resumesAt) return UpgradeRunResult.QuotaExhausted(resumesAt)
+        var providerAnswered = false
+        val result = upgradeUntilStopped(onProviderAnswer = { providerAnswered = true })
+        if (result != null || providerAnswered) pause.clearFailures()
+        if (result != null) return result
+        val now = clock.instant()
+        val failingSince = pause.recordFailure(now)
+        return UpgradeRunResult.RetryLater(retryIn = upgradeRetryDelay(streak = Duration.between(failingSince, now)))
+    }
+
+    /**
+     * `null` if the run stopped at a transient failure. [onProviderAnswer] runs when the provider answered for a
+     * story (NotApplicable does not count: it is decided on the device).
+     */
+    private suspend fun upgradeUntilStopped(onProviderAnswer: () -> Unit): UpgradeRunResult? {
         while (true) {
             val batch = thumbnailDao.storiesNeedingUpgrade(limit = UPGRADE_PARALLELISM)
             if (batch.isEmpty()) return UpgradeRunResult.Completed
@@ -80,8 +100,10 @@ internal class ThumbnailPipeline @Inject constructor(
             var misconfigured: UpgradeOutcome.Misconfigured? = null
             var retryLater = false
             for ((work, outcome) in outcomes) {
+                if (outcome is UpgradeOutcome.Upgraded || outcome is UpgradeOutcome.Rejected) onProviderAnswer()
                 when (outcome) {
-                    is UpgradeOutcome.Upgraded -> replace(work, outcome)
+                    // A failure to store it leaves the story pending: stop, or this run would pick it again.
+                    is UpgradeOutcome.Upgraded -> if (!replace(work, outcome)) retryLater = true
 
                     UpgradeOutcome.NotApplicable -> setUpgradeState(work, UpgradeState.NOT_APPLICABLE)
 
@@ -91,6 +113,7 @@ internal class ThumbnailPipeline @Inject constructor(
 
                     is UpgradeOutcome.Misconfigured -> misconfigured = outcome
 
+                    // Not counted: nothing to do with the story.
                     is UpgradeOutcome.Unavailable -> retryLater = true
 
                     is UpgradeOutcome.RetryLater -> {
@@ -108,7 +131,7 @@ internal class ThumbnailPipeline @Inject constructor(
                 Log.w(TAG, "Upgrades stopped, the provider refuses every request: ${it.reason}")
                 return UpgradeRunResult.Misconfigured
             }
-            if (retryLater) return UpgradeRunResult.RetryLater
+            if (retryLater) return null
         }
     }
 
@@ -152,14 +175,18 @@ internal class ThumbnailPipeline @Inject constructor(
         }
     }
 
-    private suspend fun replace(work: ThumbnailWork, upgraded: UpgradeOutcome.Upgraded) {
+    /**
+     * Returns `false` if the upgrade could not be stored: the story stays pending and the failure is counted every
+     * time, without the spacing, because this image was already paid for (at most 3 paid generations per story).
+     */
+    private suspend fun replace(work: ThumbnailWork, upgraded: UpgradeOutcome.Upgraded): Boolean {
         val source = upgraded.image.source.asThumbnailSource()
         val fileName = try {
             store.write(work.storyId, source, upgraded.image.webpBytes)
         } catch (e: IOException) {
             Log.w(TAG, "Could not store the upgrade for story ${work.storyId}", e)
-            countFailure(work)
-            return
+            countFailure(work, spaced = false)
+            return false
         }
         try {
             thumbnailDao.upsert(
@@ -174,20 +201,32 @@ internal class ThumbnailPipeline @Inject constructor(
             )
         } catch (e: SQLiteConstraintException) {
             Log.w(TAG, "Story ${work.storyId} disappeared before its upgrade was saved", e)
-            return
+            return true
         } catch (e: SQLException) {
-            // Counted, or the run would pick the story again and spend quota on it in a loop.
+            // Counted, so a story that can never be saved does not spend the quota again and again.
             Log.w(TAG, "Could not save the upgrade for story ${work.storyId}", e)
-            countFailure(work)
-            return
+            countFailure(work, spaced = false)
+            return false
         }
         work.fileName?.takeIf { it != fileName }?.let { store.delete(it) }
+        return true
     }
 
-    private suspend fun countFailure(work: ThumbnailWork) {
+    /**
+     * Counts a transient failure against the story; if [spaced], at most once per [MIN_FAILURE_SPACING]: every page
+     * load starts a run, and each run tries the best-ranked pending stories first, so without the spacing a few page
+     * loads during a short outage would use up their attempts within seconds. The caller stops the run either way.
+     */
+    private suspend fun countFailure(work: ThumbnailWork, spaced: Boolean = true) {
+        val now = clock.instant()
+        val lastCounted = work.updatedAt
+        // A time in the future (the clock was set back) is not recent: otherwise the story would never count again.
+        val countedRecently = work.upgradeAttempts > 0 && lastCounted != null &&
+            lastCounted > now.minus(MIN_FAILURE_SPACING) && lastCounted <= now
+        if (spaced && countedRecently) return
         val attempts = work.upgradeAttempts + 1
         val state = if (attempts >= MAX_UPGRADE_ATTEMPTS) UpgradeState.GAVE_UP else UpgradeState.PENDING
-        thumbnailDao.updateUpgrade(work.storyId, state, attempts, clock.instant())
+        thumbnailDao.updateUpgrade(work.storyId, state, attempts, now)
     }
 
     private suspend fun setUpgradeState(work: ThumbnailWork, state: UpgradeState) {
@@ -214,6 +253,12 @@ internal class ThumbnailPipeline @Inject constructor(
         /** Transient failures per story before its upgrade is given up. */
         const val MAX_UPGRADE_ATTEMPTS = 3
 
+        /**
+         * A story's transient failures count at most once per this interval (the shortest retry delay), so attempts
+         * stay spaced out although every page load starts a run.
+         */
+        val MIN_FAILURE_SPACING: Duration = Duration.ofMinutes(15)
+
         val STALE_AFTER: Duration = Duration.ofDays(7)
         private val ORPHAN_GRACE: Duration = Duration.ofMinutes(10)
     }
@@ -229,6 +274,9 @@ internal sealed interface UpgradeRunResult {
     /** Stopped because the provider refuses every request (bad credentials): try again on the next scheduled run. */
     data object Misconfigured : UpgradeRunResult
 
-    /** Stopped at a transient failure: try again with backoff. */
-    data object RetryLater : UpgradeRunResult
+    /**
+     * Stopped at a transient failure: the provider unreachable or busy, or a story's own failure (counted against
+     * it, so it is given up after [ThumbnailPipeline.MAX_UPGRADE_ATTEMPTS]). Try again in [retryIn].
+     */
+    data class RetryLater(val retryIn: Duration) : UpgradeRunResult
 }

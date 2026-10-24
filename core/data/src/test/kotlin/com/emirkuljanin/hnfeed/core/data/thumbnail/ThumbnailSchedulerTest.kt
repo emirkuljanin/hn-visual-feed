@@ -14,6 +14,7 @@ import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.emirkuljanin.hnfeed.core.data.thumbnail.WorkManagerThumbnailScheduler.Companion.PREVIEW_WORK
 import com.emirkuljanin.hnfeed.core.data.thumbnail.WorkManagerThumbnailScheduler.Companion.UPGRADE_RESUME_WORK
+import com.emirkuljanin.hnfeed.core.data.thumbnail.WorkManagerThumbnailScheduler.Companion.UPGRADE_RETRY_WORK
 import com.emirkuljanin.hnfeed.core.data.thumbnail.WorkManagerThumbnailScheduler.Companion.UPGRADE_WORK
 import java.time.Clock
 import java.time.Duration
@@ -86,6 +87,26 @@ class ThumbnailSchedulerTest {
         assertEquals(listOf(ThumbnailUpgradeWorker::class.java.name), ran)
 
         driver().setInitialDelayMet(resume.id)
+        assertEquals(ThumbnailUpgradeResumeWorker::class.java.name, ran.last())
+    }
+
+    @Test
+    fun upgradeRetry_isOneDelayedJob_outsideTheUpgradeQueue_andTheLatestFailureDecides() {
+        // A long retry left over from an earlier outage, then a new failure that asks for a short one.
+        scheduler.scheduleUpgradeRetry(Duration.ofHours(4))
+        scheduler.scheduleUpgradeRetry(Duration.ofMinutes(15))
+        val retry = infos(UPGRADE_RETRY_WORK).single { !it.state.isFinished }
+
+        assertEquals(WorkInfo.State.ENQUEUED, retry.state)
+        assertEquals(Duration.ofMinutes(15).toMillis(), retry.initialDelayMillis, "REPLACE: the latest delay wins")
+        assertTrue(infos(UPGRADE_RESUME_WORK).isEmpty(), "A quota resume is not held back by this retry")
+
+        // An upgrade request meanwhile is not queued behind the retry.
+        scheduler.scheduleUpgrades()
+        driver().setAllConstraintsMet(infos(UPGRADE_WORK).single().id)
+        assertEquals(listOf(ThumbnailUpgradeWorker::class.java.name), ran)
+
+        driver().setInitialDelayMet(retry.id)
         assertEquals(ThumbnailUpgradeResumeWorker::class.java.name, ran.last())
     }
 

@@ -18,7 +18,7 @@ interface ThumbnailDao {
     /** Feed stories without any thumbnail yet: they need an on-device preview. */
     @Query(
         """
-        SELECT stories.id AS story_id, stories.title, NULL AS file_name, 0 AS upgrade_attempts
+        SELECT stories.id AS story_id, stories.title, NULL AS file_name, 0 AS upgrade_attempts, NULL AS updated_at
         FROM top_stories
         INNER JOIN stories ON stories.id = top_stories.story_id
         LEFT JOIN thumbnails ON thumbnails.story_id = stories.id
@@ -32,7 +32,8 @@ interface ThumbnailDao {
     /** Feed stories whose thumbnail should still be upgraded. */
     @Query(
         """
-        SELECT stories.id AS story_id, stories.title, thumbnails.file_name, thumbnails.upgrade_attempts
+        SELECT stories.id AS story_id, stories.title, thumbnails.file_name, thumbnails.upgrade_attempts,
+            thumbnails.updated_at
         FROM top_stories
         INNER JOIN stories ON stories.id = top_stories.story_id
         INNER JOIN thumbnails ON thumbnails.story_id = stories.id
