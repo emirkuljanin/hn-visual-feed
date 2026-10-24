@@ -31,16 +31,23 @@ internal interface ImageGenerator {
 }
 
 /**
- * A failure that will repeat on every retry: a prompt the provider's moderation rejects, a revoked or mis-scoped
- * token. Maps to [UpgradeOutcome.Rejected].
+ * A failure of this request that will repeat on every retry, e.g. a prompt the provider's moderation rejects. Maps to
+ * [UpgradeOutcome.Rejected].
  */
 internal class PermanentGenerationException(message: String) : IOException(message)
+
+/**
+ * The provider refuses every request until its configuration changes: a bad, revoked or mis-scoped token, a wrong
+ * account id. Says nothing about this request. Maps to [UpgradeOutcome.Misconfigured].
+ */
+internal class ProviderMisconfiguredException(message: String) : IOException(message)
 
 /** The provider's daily quota is used up. Maps to [UpgradeOutcome.QuotaExhausted]. */
 internal class QuotaExceededException(message: String) : IOException(message)
 
 /**
- * The provider is busy or down for everyone (e.g. "capacity temporarily exceeded"), which says nothing about this
- * request. Maps to [UpgradeOutcome.Unavailable], like failing to reach the provider at all.
+ * The provider could not be reached (no connection, DNS, TLS, a connection dropped before any answer) or is busy or
+ * down for everyone (e.g. "capacity temporarily exceeded"), which says nothing about this request. Maps to
+ * [UpgradeOutcome.Unavailable].
  */
-internal class ProviderUnavailableException(message: String) : IOException(message)
+internal class ProviderUnavailableException(message: String, cause: Throwable? = null) : IOException(message, cause)

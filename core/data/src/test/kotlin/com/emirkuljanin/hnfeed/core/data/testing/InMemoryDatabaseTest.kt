@@ -12,6 +12,7 @@ import com.emirkuljanin.hnfeed.core.database.RoomDatabaseTransactionRunner
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import org.junit.runner.RunWith
@@ -32,10 +33,18 @@ internal abstract class InMemoryDatabaseTest {
     protected val now: Instant = Instant.parse("2026-10-23T10:00:00Z")
     protected val clock: Clock = Clock.fixed(now, ZoneOffset.UTC)
 
+    /**
+     * Where Room runs queries and its invalidation tracker; `null` keeps Room's own threads. A test that waits for
+     * Room-driven updates with virtual time (e.g. `asSnapshot` under `runTest`) passes its test dispatcher here, so
+     * those updates run on the scheduler the test advances instead of racing it.
+     */
+    protected open val queryContext: CoroutineContext? = null
+
     @BeforeTest
     fun createDatabase() {
         database = Room.inMemoryDatabaseBuilder<HnDatabase>(ApplicationProvider.getApplicationContext<Context>())
             .setDriver(AndroidSQLiteDriver())
+            .apply { queryContext?.let(::setQueryCoroutineContext) }
             .build()
     }
 

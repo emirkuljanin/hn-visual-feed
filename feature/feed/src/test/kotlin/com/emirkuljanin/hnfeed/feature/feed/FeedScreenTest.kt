@@ -27,6 +27,7 @@ import com.emirkuljanin.hnfeed.core.testing.data.testStory
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -217,6 +218,29 @@ class FeedScreenTest {
         feed.value = pagingData(before.reversed())
 
         composeRule.onNodeWithText("Story 10").assertIsDisplayed()
+    }
+
+    @Test
+    fun aStoryWhosePageIsNotLoadedYet_showsALoadingCard() {
+        val pager = Pager(PagingConfig(pageSize = 1, initialLoadSize = 1, prefetchDistance = 1)) {
+            HalfLoadedPagingSource(loaded = testStories.take(1), notLoadedYet = 1)
+        }
+        composeRule.setContent { FeedTestContent(pager.flow) }
+
+        composeRule.onNode(hasScrollAction()).performScrollToIndex(1)
+
+        composeRule.onNodeWithContentDescription("Loading story").assertIsDisplayed()
+    }
+
+    /** Returns [loaded] followed by [notLoadedYet] placeholders, whose page never arrives. */
+    private class HalfLoadedPagingSource(private val loaded: List<Story>, private val notLoadedYet: Int) :
+        PagingSource<Int, Story>() {
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Story> = when (params) {
+            is LoadParams.Append -> awaitCancellation()
+            else -> LoadResult.Page(loaded, prevKey = null, nextKey = 1, itemsBefore = 0, itemsAfter = notLoadedYet)
+        }
+
+        override fun getRefreshKey(state: PagingState<Int, Story>): Int? = null
     }
 
     /** Fails the first [failures] loads, then returns the test stories; retry re-runs the load on the same source. */

@@ -100,6 +100,30 @@ class StoryViewModelTest {
     }
 
     @Test
+    fun aSuccessfulRefresh_keepsFailedRepliesForRetry_whenTheConnectionReturns() = runTest {
+        val viewModel = viewModel()
+        viewModel.collectIn(this)
+        repository.failure = IOException("offline")
+        viewModel.toggleReplies(102)
+        viewModel.loadMore(story.id)
+        networkMonitor.setOnline(false)
+        assertEquals(LoadState.FAILED, repliesMore(viewModel, 102).state)
+        assertEquals(LoadState.FAILED, topLevelMore(viewModel).state)
+
+        repository.failure = null
+        viewModel.refresh()
+
+        assertEquals(LoadState.FAILED, repliesMore(viewModel, 102).state)
+        assertEquals(LoadState.IDLE, topLevelMore(viewModel).state)
+
+        networkMonitor.setOnline(true)
+
+        assertEquals(listOf(102L, story.id, 102L), repository.loadMoreRequests)
+        assertEquals(LoadState.IDLE, repliesMore(viewModel, 102).state)
+        assertEquals(2, repository.refreshes.size)
+    }
+
+    @Test
     fun noStoryCached_andTheRefreshFailed_leavesNoStory() = runTest {
         repository.story.value = null
         repository.failure = IOException("offline")
@@ -169,6 +193,11 @@ class StoryViewModelTest {
 
     private fun topLevelMore(viewModel: StoryViewModel) =
         viewModel.uiState.value.comments.filterIsInstance<CommentListItem.MoreComments>().single { it.isTopLevel }
+
+    private fun repliesMore(viewModel: StoryViewModel, parentId: Long) =
+        viewModel.uiState.value.comments.filterIsInstance<CommentListItem.MoreComments>().single {
+            it.parentId == parentId
+        }
 
     private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) = StoryViewModel(
         storyId = story.id,

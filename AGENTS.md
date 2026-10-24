@@ -32,11 +32,19 @@ Layers: **UI (Compose) → ViewModel → Repository → data sources (network, d
 Module dependency direction (arrows = "may depend on"); a module is added by the first PR that needs it:
 
 ```
-:app ──> :feature:* ──> :core:data ──> :core:network, :core:database, :core:imagegen ──> :core:model
-             └────────> :core:ui ──> :core:designsystem
+:app                          ──> :feature:*, :core:ui, :core:designsystem
+:feature:*                    ──> :core:data, :core:ui, :core:designsystem
+:core:data                    ──> :core:network, :core:database, :core:imagegen, :core:model, :core:common
+:core:database                ──> :core:model, :core:common
+:core:ui                      ──> :core:designsystem, :core:model
+:core:network, :core:imagegen ──> :core:common
+:core:designsystem, :core:common, :core:model ──> nothing (`:core:model` is pure Kotlin)
 ```
 
-Any Android module may depend on `:core:common` (injectable dispatchers, `Clock` and other small utilities).
+The list is what each module declares today (production code; `:core:testing` is test-only, see below). Types a
+dependency exposes through `api` may be used directly (e.g. `:core:model`, which `:core:data` and `:core:ui`
+expose to features and `:app`). Any Android module may add `:core:common` (injectable dispatchers, `Clock` and
+other small utilities).
 `:core:imagegen` exposes only `ThumbnailGenerator` (an interface) and its request/result types; generators are internal.
 `:core:ui` holds composables several features share that know the model (thumbnail, story metadata, load states,
 `PreviewTheme`); `:core:designsystem` stays model-free. Features get both through `hnfeed.android.feature`.

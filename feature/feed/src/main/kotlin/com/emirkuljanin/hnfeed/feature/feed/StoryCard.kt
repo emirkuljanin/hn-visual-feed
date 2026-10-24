@@ -11,6 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,10 +65,44 @@ internal fun StoryCard(story: Story, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
+/**
+ * Stands in for a story whose page is not loaded yet (a Paging placeholder). It has a card's layout with blank
+ * lines for the domain, a two-line title, the byline and the counts, so loading the page barely moves the list.
+ */
+@Composable
+internal fun StoryCardPlaceholder(modifier: Modifier = Modifier) {
+    val loadingLabel = stringResource(R.string.feature_feed_loading_story)
+    ElevatedCard(modifier = modifier.clearAndSetSemantics { contentDescription = loadingLabel }) {
+        StoryThumbnail(
+            thumbnail = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f),
+        )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(text = "", style = MaterialTheme.typography.labelMedium)
+            Text(text = "", style = MaterialTheme.typography.titleMedium, minLines = 2)
+            Text(text = "", style = MaterialTheme.typography.bodySmall)
+            Text(text = "", style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
 @Preview
 @Composable
 private fun StoryCardPreview() {
     PreviewTheme {
         StoryCard(story = previewStories.first(), onClick = {})
+    }
+}
+
+@Preview
+@Composable
+private fun StoryCardPlaceholderPreview() {
+    PreviewTheme {
+        StoryCardPlaceholder()
     }
 }

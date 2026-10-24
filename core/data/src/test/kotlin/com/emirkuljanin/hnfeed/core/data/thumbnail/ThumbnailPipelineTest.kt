@@ -16,6 +16,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -136,6 +137,27 @@ internal class ThumbnailPipelineTest : InMemoryDatabaseTest() {
             assertEquals(0, thumbnailDao.get(it)!!.upgradeAttempts)
         }
         assertEquals(Instant.parse("2026-10-24T00:05:00Z"), pause.resumesAt, "Paused until after the reset")
+    }
+
+    @Test
+    fun upgrade_stopsWhenTheProviderIsMisconfigured_withoutTouchingAnyStory() = runTest {
+        feed(loaded = listOf(1, 2, 3, 4))
+        pipeline.generatePreviews()
+        listOf(1L, 2L, 3L, 4L).forEach { generator.upgradeOutcomes[it] = UpgradeOutcome.Misconfigured("HTTP 401") }
+
+        assertEquals(UpgradeRunResult.Misconfigured, pipeline.upgrade())
+
+        assertEquals(2, generator.upgradeRequests.size, "Only the first parallel batch is attempted")
+        listOf(1L, 2L, 3L, 4L).forEach {
+            assertEquals(UpgradeState.PENDING, thumbnailDao.get(it)!!.upgradeState)
+            assertEquals(0, thumbnailDao.get(it)!!.upgradeAttempts)
+        }
+        assertNull(pause.resumesAt, "No timed pause: the next run tries again")
+
+        // Once the token is fixed, the next run upgrades them.
+        generator.upgradeOutcomes.clear()
+        assertEquals(UpgradeRunResult.Completed, pipeline.upgrade())
+        assertEquals(UpgradeState.DONE, thumbnailDao.get(1)!!.upgradeState)
     }
 
     @Test

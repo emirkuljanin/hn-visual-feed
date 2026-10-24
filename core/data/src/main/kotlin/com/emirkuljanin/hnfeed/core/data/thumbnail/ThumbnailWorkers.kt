@@ -29,7 +29,10 @@ class ThumbnailPreviewWorker @AssistedInject internal constructor(
     }
 }
 
-/** Phase 2: cloud upgrades for the feed, best rank first, until done, out of quota or failing transiently. */
+/**
+ * Phase 2: cloud upgrades for the feed, best rank first, until done, out of quota, refused for bad credentials or
+ * failing transiently.
+ */
 @HiltWorker
 class ThumbnailUpgradeWorker @AssistedInject internal constructor(
     @Assisted context: Context,
@@ -42,6 +45,9 @@ class ThumbnailUpgradeWorker @AssistedInject internal constructor(
         UpgradeRunResult.Completed -> Result.success()
 
         UpgradeRunResult.RetryLater -> Result.retry()
+
+        // Backoff would only repeat the refusal; the next schedule (page load, app start) tries again.
+        UpgradeRunResult.Misconfigured -> Result.success()
 
         is UpgradeRunResult.QuotaExhausted -> {
             scheduler.scheduleUpgradesAt(result.resumeAt)

@@ -207,7 +207,9 @@ private fun StoryList(
             key = stories.itemKey { it.id },
             contentType = stories.itemContentType { "story" },
         ) { index ->
-            stories[index]?.let { story -> StoryCard(story = story, onClick = { onStoryClick(story) }) }
+            // Null is a placeholder: a cached story whose page is still being read from the database.
+            val story = stories[index]
+            if (story != null) StoryCard(story = story, onClick = { onStoryClick(story) }) else StoryCardPlaceholder()
         }
         // Until a launch refresh succeeds Paging holds appends back (they report NotLoading, not the refresh), so the
         // footer also reflects the refresh: otherwise the list would just end, with the retry banner far above.

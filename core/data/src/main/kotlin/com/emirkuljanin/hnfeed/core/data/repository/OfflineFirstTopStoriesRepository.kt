@@ -32,8 +32,11 @@ internal class OfflineFirstTopStoriesRepository @Inject constructor(
         config = PagingConfig(
             pageSize = TOP_STORIES_PAGE_SIZE,
             initialLoadSize = TOP_STORIES_PAGE_SIZE,
-            // No placeholders: the snapshot size is known, but showing 500 empty cards is not useful.
-            enablePlaceholders = false,
+            // Placeholders make list indices absolute positions in the feed, so a story keeps its index when a
+            // write (a thumbnail, an opened story's refresh) invalidates the source and Room reloads around the
+            // anchor, and an index restored after process death points at the same story. They only span stories
+            // already loaded into Room (the query's row count), not the whole ~500-id snapshot.
+            enablePlaceholders = true,
         ),
         // A fresh mediator per Pager: Paging drives each mediator from a single Pager and never shares one.
         remoteMediator = remoteMediator.get(),

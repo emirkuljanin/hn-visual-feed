@@ -4,6 +4,7 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,11 +56,17 @@ class ThumbnailGeneratorTest {
 
         assertIs<UpgradeOutcome.QuotaExhausted>(outcomeFor(QuotaExceededException("HTTP 429")))
         assertIs<UpgradeOutcome.Rejected>(outcomeFor(PermanentGenerationException("HTTP 400: NSFW")))
+        assertIs<UpgradeOutcome.Misconfigured>(outcomeFor(ProviderMisconfiguredException("HTTP 401")))
         assertIs<UpgradeOutcome.RetryLater>(outcomeFor(IOException("HTTP 503")))
         assertIs<UpgradeOutcome.RetryLater>(outcomeFor(SocketTimeoutException("timeout")))
         assertIs<UpgradeOutcome.Unavailable>(outcomeFor(ProviderUnavailableException("HTTP 429: capacity")))
         assertIs<UpgradeOutcome.Unavailable>(outcomeFor(UnknownHostException("api.cloudflare.com")))
         assertIs<UpgradeOutcome.Unavailable>(outcomeFor(ConnectException("refused")))
+        // Android's message for a connect timeout; the request never left the device.
+        assertIs<UpgradeOutcome.Unavailable>(
+            outcomeFor(SocketTimeoutException("failed to connect to api.cloudflare.com (port 443) after 15000ms")),
+        )
+        assertIs<UpgradeOutcome.Unavailable>(outcomeFor(SSLHandshakeException("captive portal certificate")))
     }
 
     @Test
