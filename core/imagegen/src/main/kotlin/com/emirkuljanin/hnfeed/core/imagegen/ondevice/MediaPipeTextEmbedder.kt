@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Google's Universal Sentence Encoder (6 MB TFLite, bundled in assets) run through MediaPipe Tasks. Inference runs
- * fully on device (MediaPipe itself may send anonymous usage statistics to Google; see the README).
+ * fully on device (MediaPipe itself may send anonymous usage statistics to Google; see `docs/decisions.md`).
  *
  * The model is loaded on first use (not at injection) and kept for the process. MediaPipe tasks are not
  * documented as thread-safe, so calls are serialised; inference takes milliseconds per title, far below the cost

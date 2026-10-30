@@ -70,7 +70,7 @@ Add new commits (don't rewrite history once the PR is open) and `git push`.
 - What the pr-reviewer agent found (severity + one line each) and what was changed, or why it was left.
 
 ## Follow-ups
-- Deliberately deferred items, linked to the PR plan.
+- Deliberately deferred items, linked to `docs/roadmap.md`.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
