@@ -3,21 +3,19 @@
 Shared context for anyone (human or agent) working on or reviewing this repo without the original conversation.
 Decisions marked **Agreed** were settled with the user; challenge one only with a concrete defect.
 
-## The assignment
+A personal project: a Hacker News reader for the author's own phone. Plans are in
+[`docs/roadmap.md`](../docs/roadmap.md); this file records the scope and how the app got here.
 
-Take-home assignment for a **Senior Android Developer** role at Yttr AS (target effort 4–6 h). The code is
-meant as a basis for a technical discussion of code, architecture and technical choices, so clear, documented
-trade-offs matter more than polish. Code must be shared by Wed 2026-10-28.
+## Scope
 
-Requirements:
 1. Fetch Top story IDs and details from the official Hacker News Firebase REST API; infinite scrolling.
-2. Generate a thumbnail per story title with an AI model (on-device preferred; the hiring manager said a cloud
-   generator is acceptable if on-device is impractical, and to *think about caching results*).
+2. Generate a thumbnail per story title with an AI model (on-device preferred, cloud where on-device is
+   impractical; results are cached).
 3. Persist stories and images locally (works offline across launches).
 4. Jetpack Compose + Material 3; paged cards with image, title, author, score, submission time.
 5. Modern Android architecture (UI layer, ViewModel, Repository); Hilt; coroutines with correct dispatchers.
-6. Testing (spec just says "Testing"): unit tests, plus Roborazzi screenshot tests and Compose UI tests.
-Optional extension named by Yttr: fetching, structuring and storing HN **comments**. We implement it (PR 6).
+6. Testing: unit tests, plus Roborazzi screenshot tests and Compose UI tests.
+7. Fetching, structuring and storing HN **comments** (PR 6).
 
 ## Agreed decisions
 
@@ -35,7 +33,7 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 - **Pagination**: Paging 3 `RemoteMediator`, automatic loading. REFRESH fetches the ~500 top IDs once and stores
   a snapshot table `(rank, storyId)`; APPEND slices the stored snapshot and fetches item details in parallel.
   PagingSource = Room join of snapshot + story + thumbnail ordered by rank.
-- **Storage**: images as ~512 px WebP files in `filesDir/thumbnails/`, path + status in a separate `thumbnail`
+- **Storage**: images as ~512 px WebP files in `filesDir/thumbnails/`, path + status in a separate `thumbnails`
   table (story upserts never clobber images). Evict rows/files for stories no longer in the snapshot after N days.
 - **Generation scheduling**: unique WorkManager jobs. Previews: every visible story without a thumbnail, in rank
   order, bounded concurrency; when done they enqueue upgrades. Upgrades: `PENDING` rows in rank order; stop at the
@@ -46,7 +44,7 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 - **Stack**: Kotlin 2.4, AGP 9 (built-in Kotlin), Gradle 9.8, Hilt (KSP), Retrofit + kotlinx.serialization,
   Room 3 (platform SQLite driver), Paging 3, Navigation 3, WorkManager, Coil 3, Roborazzi/Robolectric. Always the latest
   stable versions.
-- **Modules**: `:app`, `:core:common` (dispatchers), `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
+- **Modules**: `:app`, `:core:common` (dispatchers, clock), `:core:model` (JVM), `:core:network`, `:core:database`, `:core:data`, `:core:imagegen`,
   `:core:designsystem`, `:core:ui` (shared model-aware composables, PR 6), `:core:testing`, `:feature:feed`,
   `:feature:story`, `build-logic` convention plugins.
   A module is added by the PR that first needs it.
@@ -56,7 +54,9 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
   PR 9 moved the repo to GitHub (user decision 2026-10-23): PRs, reviews and GitHub Actions CI happen there from
   now on, and Gitblit is retired.
 
-## PR plan
+## PR history
+
+The original plan, all merged. New work is planned in [`docs/roadmap.md`](../docs/roadmap.md).
 
 1. Project skeleton (build-logic, catalog, Hilt, theme, placeholder feed). *Merged.*
 2. Network + database + models (MockWebServer, in-memory Room tests). *Merged.*
@@ -71,17 +71,21 @@ Optional extension named by Yttr: fetching, structuring and storing HN **comment
 6. Story detail + comments (adjacency list in Room with stub rows, lazy expansion by level, Navigation 3 in
    `:app`, shared composables moved to `:core:ui`). *Merged.*
 7. Polish: offline awareness with automatic retry, accessibility (TalkBack, largest font), shared thumbnail
-   transition, app-level Hilt UI tests on Robolectric, README overhaul for reviewers. *Merged.*
-8. Stretch, investigated and dropped (user decision 2026-10-23): opt-in on-device diffusion. MediaPipe Image
+   transition, app-level Hilt UI tests on Robolectric, README overhaul. *Merged.*
+8. Investigated and dropped (user decision 2026-10-23): opt-in on-device diffusion. MediaPipe Image
    Generator ran on the user's Pixel 7 Pro (Tensor G2) after working around a mis-built release (full-protobuf
    call), a MediaPipe version clash and a native-runtime clash, then produced only noise; the community SD 1.5
    conversion was proven byte-identical to the official weights, which points to the GPU engine/driver. The remaining path
-   (stable-diffusion.cpp on CPU with SDXS, native build) was not worth the risk before the deadline. PR 8 ships the
+   (stable-diffusion.cpp on CPU with SDXS, native build) was not worth the risk. PR 8 ships the
    write-up only: `docs/on-device-diffusion.md`. *Merged.*
 9. Move to GitHub with GitHub Actions CI: a public repository; checks on every PR and push to master (format, lint,
    JVM/Robolectric tests, screenshots, both builds), instrumented tests on an emulator, the release APK as an
    artifact and on tagged GitHub Releases. CI has no Cloudflare secrets (a public APK must not carry the token).
-   *Merged* (GitHub PR #1). Gitblit retired; all PRs on GitHub from here on.
+   *Merged* (GitHub PR #1, with a status fix in #2). `v1.0.0` released from here. Gitblit retired; all PRs on GitHub
+   from here on.
+10. Two code audits, not in the original plan. GitHub PR #3: feed scroll position (Paging placeholders),
+    Cloudflare error classification, comment retry state, a flaky paging test. GitHub PR #4: wide layouts, cloud
+    upgrade retries without WorkManager backoff, test hardening. *Merged.* Neither is in a release yet.
 
 ## Environment
 

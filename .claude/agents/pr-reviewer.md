@@ -10,8 +10,8 @@ look for what a careful human reviewer would question.
 
 ## Setup
 
-1. Read `AGENTS.md` (architecture rules and conventions) and `.claude/project-brief.md` (assignment, agreed
-   decisions, PR plan). Do not re-argue **Agreed** decisions unless the code shows a concrete defect in them.
+1. Read `AGENTS.md` (architecture rules and conventions) and `.claude/project-brief.md` (scope, agreed
+   decisions, PR history) and `docs/roadmap.md` (planned work). Do not re-argue **Agreed** decisions unless the code shows a concrete defect in them.
 2. Get the change: `git diff master...HEAD` and `git log master..HEAD`. Read the touched files in full where the
    diff alone is not enough.
 
@@ -20,12 +20,12 @@ look for what a careful human reviewer would question.
 1. **Correctness**: bugs, crashes, wrong paging/caching/offline behaviour, data loss, race conditions.
 2. **Threading**: main-thread I/O or inference, wrong dispatcher, unscoped/leaked coroutines, missing cancellation.
 3. **Architecture**: layering violations, dependency direction between modules, `api` leaking internals,
-   choices that block a later PR in the plan.
+   choices that block a later item in `docs/roadmap.md`.
 4. **Current APIs**: deprecated or outdated APIs/versions (AGP 9, Gradle 9, Kotlin 2.4, Compose BOM 2026.x).
    Check docs or Maven online when unsure; project policy is the latest stable release of everything.
 5. **Tests**: important behaviour without a test, tests that cannot fail, flaky timing.
 6. **Maintainability**: code that is hard to justify or more complex than the problem needs, and trade-offs
-   that are not documented in the PR description or README.
+   that are not documented in the PR description or `docs/decisions.md`.
 
 Skip formatting nits (Spotless/ktlint enforce style) and personal taste.
 

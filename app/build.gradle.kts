@@ -34,7 +34,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug-signed so reviewers can install a release build without a keystore. Each machine (and each CI
+            // Debug-signed so anyone can install a release build without a keystore. Each machine (and each CI
             // runner) has its own debug key, so a build from elsewhere installs only after uninstalling this one.
             signingConfig = signingConfigs.getByName("debug")
         }

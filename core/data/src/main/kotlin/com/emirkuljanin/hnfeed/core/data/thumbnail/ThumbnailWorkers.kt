@@ -62,7 +62,7 @@ class ThumbnailUpgradeWorker @AssistedInject internal constructor(
     }
 }
 
-/** Runs once the provider's quota has reset, or a while after it was unavailable, and puts upgrades back in their queue. */
+/** Runs once the quota has reset, or a while after a failure stopped a run, and puts upgrades back in their queue. */
 @HiltWorker
 class ThumbnailUpgradeResumeWorker @AssistedInject internal constructor(
     @Assisted context: Context,

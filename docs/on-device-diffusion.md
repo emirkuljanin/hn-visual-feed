@@ -1,6 +1,6 @@
 # On-device diffusion: investigated, then dropped
 
-PR 8 was meant to be the stretch goal: an opt-in, fully on-device text-to-image model as a third thumbnail tier, for
+PR 8 was meant to add an opt-in, fully on-device text-to-image model as a third thumbnail tier, for
 stories the cloud quota does not reach. This document records what was tried on a real device, what was established
 and why the feature was dropped. Nothing of it ships in the app; the thumbnail pipeline was built so it could be added
 later (see [What it would take](#what-it-would-take)).
@@ -11,7 +11,7 @@ weights showed the model is exactly what Google's converter produces, which by e
 (no longer maintained) OpenCL
 engine on this phone's Mali GPU and driver. Of the other on-device options found, one is plausible
 (stable-diffusion.cpp on the CPU with a one-step model), but it needs a native build and its speed on this hardware
-is unknown, so it was not worth the risk before the deadline.
+is unknown, so it was not worth the risk.
 
 ## The plan
 
@@ -194,11 +194,11 @@ The plausible path, and how it would fit the existing code:
 - Google's own path (MediaPipe) does not work on the target device, by elimination its engine on this GPU and
   driver, and Google has stopped maintaining it.
 - The remaining path adds a native build, a third-party runtime and a 683 MB download for an image quality and speed
-  nobody had seen on this hardware, a few working days before the code was due.
+  nobody had seen on this hardware.
 - Every story already gets a picture: on-device art at once, cloud images as the free quota allows. A third tier
   would improve the long tail, not fix a gap.
 
-## Takeaways
+## Lessons
 
 - **Spike before building**: one instrumented test on a real device answered in an evening what would otherwise
   have surfaced after a settings screen, a download manager and a pipeline change were written.
@@ -215,4 +215,4 @@ The plausible path, and how it would fit the existing code:
 - **Android realities**: GPU driver fragmentation (Mali vs Adreno, driver updates), vendor libraries behind
   `<uses-native-library>`, 16 KB pages, per-ABI native libraries and APK size, WorkManager limits for long work.
 - **Knowing when to stop**: the code that shipped already gives every story a picture; the extra tier was not
-  worth the risk before the deadline.
+  worth the risk.

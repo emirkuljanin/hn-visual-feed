@@ -4,8 +4,10 @@ Guidance for AI coding agents (and humans) working in this repository. Keep it s
 here stops matching the code, fix whichever one is wrong in the same PR.
 
 **HN Visual Feed**: an Android app that shows Hacker News top stories as an offline-capable, paged feed of
-cards, each with an AI-generated thumbnail. The assignment, agreed decisions and PR plan are in
-[`.claude/project-brief.md`](.claude/project-brief.md). Read it before making design decisions.
+cards, each with an AI-generated thumbnail. A personal project for reading Hacker News on a phone.
+Read these before making design decisions: [`.claude/project-brief.md`](.claude/project-brief.md) (scope,
+agreed decisions, PR history), [`docs/roadmap.md`](docs/roadmap.md) (what comes next) and
+[`docs/decisions.md`](docs/decisions.md) (trade-offs by area; update it in the PR that changes one).
 
 ## Commands
 
